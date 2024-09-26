@@ -1335,8 +1335,8 @@ let%test_module "quickcheck" =
         in
         let open Generator.Let_syntax in
         let%bind field_names = random_field_names in
-        let%bind query_generator = query_generator in
-        let%map random_value = random_value in
+        let%bind query_generator in
+        let%map random_value in
         List.fold field_names ~init:query_generator ~f:(fun acc field_name ->
           match Map.mem (acc : _ String.Map.t) field_name with
           | true -> acc
