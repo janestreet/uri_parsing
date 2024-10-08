@@ -1089,322 +1089,311 @@ let%expect_test "optional field" =
     |}]
 ;;
 
-let%test_module "quickcheck" =
-  (module struct
-    module Query = struct
-      module Player_id = struct
-        type t = int [@@deriving sexp, equal, quickcheck]
+module%test [@name "quickcheck"] _ = struct
+  module Query = struct
+    module Player_id = struct
+      type t = int [@@deriving sexp, equal, quickcheck]
 
-        let to_string = Int.to_string
-        let of_string = Int.of_string
-        let to_int = Fn.id
-        let of_int = Fn.id
-      end
+      let to_string = Int.to_string
+      let of_string = Int.of_string
+      let to_int = Fn.id
+      let of_int = Fn.id
+    end
 
-      module Point = struct
-        type t =
-          { x : int
-          ; y : int
-          }
-        [@@deriving typed_fields, sexp, equal, quickcheck]
-
-        let parser_for_field : type a. a Typed_field.t -> a Parser.t =
-          let open Parsers in
-          function
-          | X -> from_query_required int
-          | Y -> from_query_required int
-        ;;
-
-        module Path_order = Path_order (Typed_field)
-
-        let path_order = Path_order.T []
-      end
-
-      module Time_ns = struct
-        include Time_ns
-
-        module Alternate_sexp = struct
-          include Time_ns.Alternate_sexp
-
-          let quickcheck_generator = Time_ns.quickcheck_generator
-          let quickcheck_observer = Time_ns.quickcheck_observer
-          let quickcheck_shrinker = Time_ns.quickcheck_shrinker
-        end
-      end
-
+    module Point = struct
       type t =
-        | Main of
-            { int_field : int
-            ; int_list_field : int list
-            ; float_list_field :
-                (float list
-                [@quickcheck.generator Generator.list Generator.float_without_nan])
-            ; sexpable : Point.t
-            ; stringable : Player_id.t
-            ; nested : Point.t
-            ; time_ns_field : Time_ns.Alternate_sexp.t
-            ; list_projection : Player_id.t list
-            ; int_list_with_fallback : int list
-            ; at_least_one_int :
-                (int list[@quickcheck.generator Generator.list_non_empty Generator.int])
-            ; path_int : int
-            ; path_bool_without_name : bool
-            ; remaining_path : int list
-            } [@typed_fields]
-        | Secondary of int
-      [@@deriving typed_variants, sexp, equal, quickcheck]
+        { x : int
+        ; y : int
+        }
+      [@@deriving typed_fields, sexp, equal, quickcheck]
 
-      module Anon_main = struct
-        let fallback_value = 100
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t =
+        let open Parsers in
+        function
+        | X -> from_query_required int
+        | Y -> from_query_required int
+      ;;
 
-        module Typed_field =
-          Typed_variant.Typed_variant_anonymous_records.Typed_field_of_main
+      module Path_order = Path_order (Typed_field)
 
-        let parser_for_field : type a. a Typed_field.t -> a Parser.t =
-          let open Parsers in
-          function
-          | Int_field -> from_query_required int
-          | Int_list_field -> int |> from_query_many
-          | Float_list_field -> float |> from_query_many
-          | Time_ns_field -> time_ns |> from_query_required
-          | Sexpable -> sexpable (module Point) |> from_query_required
-          | Stringable -> stringable (module Player_id) |> from_query_required
-          | Nested -> Parser.Record.make (module Point)
-          | List_projection ->
-            project int ~parse_exn:Player_id.of_int ~unparse:Player_id.to_int
-            |> from_query_many
-          | Int_list_with_fallback ->
-            from_query_many (fallback int ~fallback:fallback_value)
-          | At_least_one_int -> from_query_many_at_least_1 int
-          | Path_int -> with_prefix [ "path_int" ] (from_path int)
-          | Path_bool_without_name -> with_prefix [] (from_path bool)
-          | Remaining_path -> with_prefix [ "remaining" ] (from_remaining_path int)
-        ;;
+      let path_order = Path_order.T []
+    end
 
-        let path_generator =
-          let int_generator = Generator.int in
-          let bool_generator = Generator.bool in
-          let remaining_generator = Generator.int |> Generator.list in
-          Generator.map3
-            int_generator
-            bool_generator
-            remaining_generator
-            ~f:(fun int_ bool_ remaining ->
-              [ "main"
-              ; "path_int"
-              ; Int.to_string int_
-              ; Bool.to_string bool_
-              ; "remaining"
-              ]
-              @ List.map remaining ~f:Int.to_string)
-        ;;
+    module Time_ns = struct
+      include Time_ns
 
-        module Path_order = Path_order (Typed_field)
+      module Alternate_sexp = struct
+        include Time_ns.Alternate_sexp
 
-        let path_order = Path_order.T [ Path_int; Path_bool_without_name; Remaining_path ]
+        let quickcheck_generator = Time_ns.quickcheck_generator
+        let quickcheck_observer = Time_ns.quickcheck_observer
+        let quickcheck_shrinker = Time_ns.quickcheck_shrinker
+      end
+    end
 
-        let generator_for_field
-          : type a. a Typed_field.t -> string list Generator.t option
-          =
-          let open Generator in
-          function
-          | Int_field ->
-            Some (map quickcheck_generator_int ~f:(fun x -> [ Int.to_string x ]))
-          | Time_ns_field ->
-            Some
-              (map Time_ns.Alternate_sexp.quickcheck_generator ~f:(fun x ->
-                 [ Time_ns.to_int63_ns_since_epoch x |> Int63.to_string ]))
-          | Int_list_field -> Some (map quickcheck_generator_int ~f:Int.to_string |> list)
-          | Float_list_field ->
-            (* No roundtrip guarantees on nans. *)
-            Some
-              (map
-                 (list quickcheck_generator_float)
-                 ~f:
-                   (List.filter_map ~f:(fun x ->
-                      match Float.is_nan x with
-                      | true -> None
-                      | false -> Some (Float.to_string x))))
-          | Sexpable ->
-            Some
-              (map
-                 (map2 size size ~f:(fun a b -> a, b))
-                 ~f:(fun (x, y) ->
-                   let s = Point.sexp_of_t { Point.x; y } |> Sexp.to_string in
-                   [ s ]))
-          | Stringable ->
-            Some (map quickcheck_generator_int ~f:(fun x -> [ Int.to_string x ]))
-          | Nested -> None
-          | List_projection -> Some (map quickcheck_generator_int ~f:Int.to_string |> list)
-          | Int_list_with_fallback ->
-            Some
-              (either
-                 (map quickcheck_generator_int ~f:Int.to_string)
-                 quickcheck_generator_string
-               |> map ~f:(function First x | Second x -> x)
-               |> list)
-          | At_least_one_int ->
-            Some (map quickcheck_generator_int ~f:Int.to_string |> list_non_empty)
-          | Path_int -> None
-          | Path_bool_without_name -> None
-          | Remaining_path -> None
-        ;;
+    type t =
+      | Main of
+          { int_field : int
+          ; int_list_field : int list
+          ; float_list_field :
+              (float list
+              [@quickcheck.generator Generator.list Generator.float_without_nan])
+          ; sexpable : Point.t
+          ; stringable : Player_id.t
+          ; nested : Point.t
+          ; time_ns_field : Time_ns.Alternate_sexp.t
+          ; list_projection : Player_id.t list
+          ; int_list_with_fallback : int list
+          ; at_least_one_int :
+              (int list[@quickcheck.generator Generator.list_non_empty Generator.int])
+          ; path_int : int
+          ; path_bool_without_name : bool
+          ; remaining_path : int list
+          } [@typed_fields]
+      | Secondary of int
+    [@@deriving typed_variants, sexp, equal, quickcheck]
 
-        let string_list_equal = List.equal String.equal
-        let is_int_string possible_int = Int.of_string_opt possible_int |> Option.is_some
+    module Anon_main = struct
+      let fallback_value = 100
 
-        let equal_values_for_field
-          : type a. a Typed_field.t -> (string list -> string list -> bool) option
-          = function
-          | Int_field -> Some string_list_equal
-          | Time_ns_field -> Some string_list_equal
-          | Int_list_field -> Some string_list_equal
-          | Float_list_field -> Some string_list_equal
-          | Sexpable -> Some string_list_equal
-          | Stringable -> Some string_list_equal
-          | Nested -> None
-          | List_projection -> Some string_list_equal
-          | Int_list_with_fallback ->
-            (* This equality function is weird, but it makes
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_main
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t =
+        let open Parsers in
+        function
+        | Int_field -> from_query_required int
+        | Int_list_field -> int |> from_query_many
+        | Float_list_field -> float |> from_query_many
+        | Time_ns_field -> time_ns |> from_query_required
+        | Sexpable -> sexpable (module Point) |> from_query_required
+        | Stringable -> stringable (module Player_id) |> from_query_required
+        | Nested -> Parser.Record.make (module Point)
+        | List_projection ->
+          project int ~parse_exn:Player_id.of_int ~unparse:Player_id.to_int
+          |> from_query_many
+        | Int_list_with_fallback ->
+          from_query_many (fallback int ~fallback:fallback_value)
+        | At_least_one_int -> from_query_many_at_least_1 int
+        | Path_int -> with_prefix [ "path_int" ] (from_path int)
+        | Path_bool_without_name -> with_prefix [] (from_path bool)
+        | Remaining_path -> with_prefix [ "remaining" ] (from_remaining_path int)
+      ;;
+
+      let path_generator =
+        let int_generator = Generator.int in
+        let bool_generator = Generator.bool in
+        let remaining_generator = Generator.int |> Generator.list in
+        Generator.map3
+          int_generator
+          bool_generator
+          remaining_generator
+          ~f:(fun int_ bool_ remaining ->
+            [ "main"; "path_int"; Int.to_string int_; Bool.to_string bool_; "remaining" ]
+            @ List.map remaining ~f:Int.to_string)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ Path_int; Path_bool_without_name; Remaining_path ]
+
+      let generator_for_field : type a. a Typed_field.t -> string list Generator.t option =
+        let open Generator in
+        function
+        | Int_field ->
+          Some (map quickcheck_generator_int ~f:(fun x -> [ Int.to_string x ]))
+        | Time_ns_field ->
+          Some
+            (map Time_ns.Alternate_sexp.quickcheck_generator ~f:(fun x ->
+               [ Time_ns.to_int63_ns_since_epoch x |> Int63.to_string ]))
+        | Int_list_field -> Some (map quickcheck_generator_int ~f:Int.to_string |> list)
+        | Float_list_field ->
+          (* No roundtrip guarantees on nans. *)
+          Some
+            (map
+               (list quickcheck_generator_float)
+               ~f:
+                 (List.filter_map ~f:(fun x ->
+                    match Float.is_nan x with
+                    | true -> None
+                    | false -> Some (Float.to_string x))))
+        | Sexpable ->
+          Some
+            (map
+               (map2 size size ~f:(fun a b -> a, b))
+               ~f:(fun (x, y) ->
+                 let s = Point.sexp_of_t { Point.x; y } |> Sexp.to_string in
+                 [ s ]))
+        | Stringable ->
+          Some (map quickcheck_generator_int ~f:(fun x -> [ Int.to_string x ]))
+        | Nested -> None
+        | List_projection -> Some (map quickcheck_generator_int ~f:Int.to_string |> list)
+        | Int_list_with_fallback ->
+          Some
+            (either
+               (map quickcheck_generator_int ~f:Int.to_string)
+               quickcheck_generator_string
+             |> map ~f:(function First x | Second x -> x)
+             |> list)
+        | At_least_one_int ->
+          Some (map quickcheck_generator_int ~f:Int.to_string |> list_non_empty)
+        | Path_int -> None
+        | Path_bool_without_name -> None
+        | Remaining_path -> None
+      ;;
+
+      let string_list_equal = List.equal String.equal
+      let is_int_string possible_int = Int.of_string_opt possible_int |> Option.is_some
+
+      let equal_values_for_field
+        : type a. a Typed_field.t -> (string list -> string list -> bool) option
+        = function
+        | Int_field -> Some string_list_equal
+        | Time_ns_field -> Some string_list_equal
+        | Int_list_field -> Some string_list_equal
+        | Float_list_field -> Some string_list_equal
+        | Sexpable -> Some string_list_equal
+        | Stringable -> Some string_list_equal
+        | Nested -> None
+        | List_projection -> Some string_list_equal
+        | Int_list_with_fallback ->
+          (* This equality function is weird, but it makes
 
                  ["1"; "not an int"; "3"; "4"] equal to ["1"; "100"; "3"; "4"]
 
                  which is useful to make check that the fallback did its work!
-            *)
-            Some
-              (List.equal (fun a b ->
-                 match is_int_string a with
-                 | true ->
-                   (* This fixes strings that happen to be ints with leading 0's (e.g. "05") *)
-                   String.equal (Int.of_string a |> Int.to_string) b
-                 | false -> String.equal (Int.to_string fallback_value) b))
-          | At_least_one_int -> Some string_list_equal
-          | Path_int -> None
-          | Path_bool_without_name -> None
-          | Remaining_path -> None
-        ;;
-      end
-
-      let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
-        | Main ->
-          Parser.with_prefix
-            [ "main" ]
-            (Parser.Record.make ~namespace:[] (module Anon_main))
-        | Secondary ->
-          Parser.with_prefix [ "secondary" ] (Parser.from_path Value_parser.int)
+          *)
+          Some
+            (List.equal (fun a b ->
+               match is_int_string a with
+               | true ->
+                 (* This fixes strings that happen to be ints with leading 0's (e.g. "05") *)
+                 String.equal (Int.of_string a |> Int.to_string) b
+               | false -> String.equal (Int.to_string fallback_value) b))
+        | At_least_one_int -> Some string_list_equal
+        | Path_int -> None
+        | Path_bool_without_name -> None
+        | Remaining_path -> None
       ;;
     end
 
-    let%quick_test "round-trip generated Query.t" =
-      fun (t : Query.t) ->
-      let parser = Parser.Variant.make ~namespace:[] (module Query) in
-      let projection = Parser.eval ~equal:[%equal: Query.t] parser in
-      let { Components.query = serialized; path } =
-        projection.unparse { Parse_result.result = t; remaining = Components.empty }
-      in
-      let result = projection.parse_exn { query = serialized; path } in
-      assert (Query.equal t result.result)
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Main ->
+        Parser.with_prefix
+          [ "main" ]
+          (Parser.Record.make ~namespace:[] (module Anon_main))
+      | Secondary ->
+        Parser.with_prefix [ "secondary" ] (Parser.from_path Value_parser.int)
     ;;
+  end
 
-    let generator =
-      let query_generator =
-        let open Generator in
-        let query_without_nested =
-          List.fold
-            Query.Anon_main.Typed_field.Packed.all
-            ~init:(Generator.return String.Map.empty)
-            ~f:(fun acc { f = T f } ->
-              match Query.Anon_main.generator_for_field f with
-              | None -> acc
-              | Some generator ->
-                Generator.map2 acc generator ~f:(fun acc field_generator ->
-                  Map.set
-                    acc
-                    ~key:(Query.Anon_main.Typed_field.name f)
-                    ~data:field_generator))
-        in
-        let x_generator = Generator.int >>| fun x -> [ Int.to_string x ] in
-        let y_generator = Generator.int >>| fun x -> [ Int.to_string x ] in
-        Generator.map3 query_without_nested x_generator y_generator ~f:(fun query x y ->
-          query |> Map.set ~key:"nested.x" ~data:x |> Map.set ~key:"nested.y" ~data:y)
-      in
-      let query_with_random_extra_fields =
-        let random_value = quickcheck_generator_string |> Generator.list_non_empty in
-        let random_field_names =
-          quickcheck_generator_string |> Generator.list_non_empty
-        in
-        let open Generator.Let_syntax in
-        let%bind field_names = random_field_names in
-        let%bind query_generator in
-        let%map random_value in
-        List.fold field_names ~init:query_generator ~f:(fun acc field_name ->
-          match Map.mem (acc : _ String.Map.t) field_name with
-          | true -> acc
-          | false -> Map.set (acc : _ String.Map.t) ~key:field_name ~data:random_value)
-      in
-      let main_query_and_path =
-        Generator.map2
-          query_with_random_extra_fields
-          Query.Anon_main.path_generator
-          ~f:(fun query path -> query, path)
-      in
-      let secondary_generator =
-        Generator.map Generator.int ~f:(fun index ->
-          String.Map.empty, [ "secondary"; Int.to_string index ])
-      in
-      Generator.bind Generator.bool ~f:(fun is_main ->
-        if is_main then main_query_and_path else secondary_generator)
-    ;;
+  let%quick_test "round-trip generated Query.t" =
+    fun (t : Query.t) ->
+    let parser = Parser.Variant.make ~namespace:[] (module Query) in
+    let projection = Parser.eval ~equal:[%equal: Query.t] parser in
+    let { Components.query = serialized; path } =
+      projection.unparse { Parse_result.result = t; remaining = Components.empty }
+    in
+    let result = projection.parse_exn { query = serialized; path } in
+    assert (Query.equal t result.result)
+  ;;
 
-    let maps_equal original unparsed =
-      let equal_values_for_field =
+  let generator =
+    let query_generator =
+      let open Generator in
+      let query_without_nested =
         List.fold
           Query.Anon_main.Typed_field.Packed.all
-          ~init:String.Map.empty
+          ~init:(Generator.return String.Map.empty)
           ~f:(fun acc { f = T f } ->
-            let key = Query.Anon_main.Typed_field.name f in
-            let equal = Query.Anon_main.equal_values_for_field f in
-            match equal with
+            match Query.Anon_main.generator_for_field f with
             | None -> acc
-            | Some equal -> Map.set acc ~key ~data:equal)
+            | Some generator ->
+              Generator.map2 acc generator ~f:(fun acc field_generator ->
+                Map.set
+                  acc
+                  ~key:(Query.Anon_main.Typed_field.name f)
+                  ~data:field_generator))
       in
-      Map.for_alli
-        (unparsed : _ String.Map.t)
-        ~f:(fun ~key ~data:unparsed_data ->
-          let is_equal =
-            match Map.find (original : _ String.Map.t) key with
-            | None -> false
-            | Some original_data ->
-              (match Map.find (equal_values_for_field : _ String.Map.t) key with
-               | None -> List.equal String.equal original_data unparsed_data
-               | Some equal -> equal original_data unparsed_data)
-          in
-          if not is_equal
-          then
-            print_s
-              [%message
-                "Field is not equal!"
-                  (key : string)
-                  (original : string list String.Map.t)
-                  (unparsed : string list String.Map.t)];
-          is_equal)
-    ;;
+      let x_generator = Generator.int >>| fun x -> [ Int.to_string x ] in
+      let y_generator = Generator.int >>| fun x -> [ Int.to_string x ] in
+      Generator.map3 query_without_nested x_generator y_generator ~f:(fun query x y ->
+        query |> Map.set ~key:"nested.x" ~data:x |> Map.set ~key:"nested.y" ~data:y)
+    in
+    let query_with_random_extra_fields =
+      let random_value = quickcheck_generator_string |> Generator.list_non_empty in
+      let random_field_names = quickcheck_generator_string |> Generator.list_non_empty in
+      let open Generator.Let_syntax in
+      let%bind field_names = random_field_names in
+      let%bind query_generator in
+      let%map random_value in
+      List.fold field_names ~init:query_generator ~f:(fun acc field_name ->
+        match Map.mem (acc : _ String.Map.t) field_name with
+        | true -> acc
+        | false -> Map.set (acc : _ String.Map.t) ~key:field_name ~data:random_value)
+    in
+    let main_query_and_path =
+      Generator.map2
+        query_with_random_extra_fields
+        Query.Anon_main.path_generator
+        ~f:(fun query path -> query, path)
+    in
+    let secondary_generator =
+      Generator.map Generator.int ~f:(fun index ->
+        String.Map.empty, [ "secondary"; Int.to_string index ])
+    in
+    Generator.bind Generator.bool ~f:(fun is_main ->
+      if is_main then main_query_and_path else secondary_generator)
+  ;;
 
-    let%quick_test "attempt to parse generated queries" =
-      fun ((query, path) :
-            (string list String.Map.t * string list
-            [@generator generator] [@shrinker Shrinker.atomic])) ->
-      let parser = Parser.Variant.make ~namespace:[] (module Query) in
-      let projection = Parser.eval ~equal:[%equal: Query.t] parser in
-      let result = projection.parse_exn { query; path } in
-      let { Components.query = unparsed_query; path = unparsed_path } =
-        projection.unparse result
-      in
-      assert (maps_equal query unparsed_query);
-      assert (List.equal String.equal unparsed_path path)
-    ;;
-  end)
-;;
+  let maps_equal original unparsed =
+    let equal_values_for_field =
+      List.fold
+        Query.Anon_main.Typed_field.Packed.all
+        ~init:String.Map.empty
+        ~f:(fun acc { f = T f } ->
+          let key = Query.Anon_main.Typed_field.name f in
+          let equal = Query.Anon_main.equal_values_for_field f in
+          match equal with
+          | None -> acc
+          | Some equal -> Map.set acc ~key ~data:equal)
+    in
+    Map.for_alli
+      (unparsed : _ String.Map.t)
+      ~f:(fun ~key ~data:unparsed_data ->
+        let is_equal =
+          match Map.find (original : _ String.Map.t) key with
+          | None -> false
+          | Some original_data ->
+            (match Map.find (equal_values_for_field : _ String.Map.t) key with
+             | None -> List.equal String.equal original_data unparsed_data
+             | Some equal -> equal original_data unparsed_data)
+        in
+        if not is_equal
+        then
+          print_s
+            [%message
+              "Field is not equal!"
+                (key : string)
+                (original : string list String.Map.t)
+                (unparsed : string list String.Map.t)];
+        is_equal)
+  ;;
+
+  let%quick_test "attempt to parse generated queries" =
+    fun ((query, path) :
+          (string list String.Map.t * string list
+          [@generator generator] [@shrinker Shrinker.atomic])) ->
+    let parser = Parser.Variant.make ~namespace:[] (module Query) in
+    let projection = Parser.eval ~equal:[%equal: Query.t] parser in
+    let result = projection.parse_exn { query; path } in
+    let { Components.query = unparsed_query; path = unparsed_path } =
+      projection.unparse result
+    in
+    assert (maps_equal query unparsed_query);
+    assert (List.equal String.equal unparsed_path path)
+  ;;
+end
 
 let%expect_test "path order has duplicate values" =
   let module Query = struct
@@ -3413,232 +3402,228 @@ let%expect_test "[regression] exponential url shapes" =
     |}]
 ;;
 
-let%test_module "query-based variant" =
-  (module struct
-    module Well_behaved_url = struct
+module%test [@name "query-based variant"] _ = struct
+  module Well_behaved_url = struct
+    type t =
+      | A of string
+      | B
+      | C
+    [@@deriving sexp_of, typed_variants, equal]
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | A -> Parser.from_query_required Value_parser.string
+      | B -> Parser.unit
+      | C -> Parser.unit
+    ;;
+
+    let identifier_for_variant : type a. a Typed_variant.t -> string = function
+      | A -> "a"
+      | B -> "bee"
+      | C -> "c"
+    ;;
+  end
+
+  let parser =
+    Uri_parsing.Parser.Query_based_variant.make (module Well_behaved_url) ~key:"page"
+  ;;
+
+  let versioned_parser = Versioned_parser.first_parser parser
+
+  let projection =
+    Versioned_parser.eval_for_uri ~equal:[%equal: Well_behaved_url.t] versioned_parser
+  ;;
+
+  let%expect_test "check ok" =
+    Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
+    [%expect
+      {|
+      URL parser looks good!
+      ┌─────────────────────┐
+      │ All urls            │
+      ├─────────────────────┤
+      │ /?a=<string>&page=a │
+      │ /?page=bee          │
+      │ /?page=c            │
+      └─────────────────────┘
+      |}]
+  ;;
+
+  let%expect_test "parse unparse (a)" =
+    let original = Uri.make ~query:[ "page", [ "a" ]; "a", [ "beep boop" ] ] () in
+    print_endline (Uri.to_string original);
+    [%expect {| ?page=a&a=beep%20boop |}];
+    let parsed = projection.parse_exn original in
+    print_s [%sexp (parsed : Well_behaved_url.t Parse_result.t)];
+    [%expect {| ((result (A "beep boop")) (remaining ((path ()) (query ())))) |}];
+    let unparsed = projection.unparse parsed in
+    print_endline (Uri.to_string unparsed);
+    [%expect {| ?a=beep%20boop&page=a |}]
+  ;;
+
+  let%expect_test "parse unparse (b)" =
+    let original = Uri.make ~query:[ "page", [ "bee" ] ] () in
+    print_endline (Uri.to_string original);
+    [%expect {| ?page=bee |}];
+    let parsed = projection.parse_exn original in
+    print_s [%sexp (parsed : Well_behaved_url.t Parse_result.t)];
+    [%expect {| ((result B) (remaining ((path ()) (query ())))) |}];
+    let unparsed = projection.unparse parsed in
+    print_endline (Uri.to_string unparsed);
+    [%expect {| ?page=bee |}]
+  ;;
+
+  let%expect_test "parse unknown (beep boop)" =
+    let original = Uri.make ~query:[ "page", [ "beep boop" ] ] () in
+    print_endline (Uri.to_string original);
+    [%expect {| ?page=beep%20boop |}];
+    Expect_test_helpers_base.require_does_raise (fun () -> projection.parse_exn original);
+    [%expect
+      {|
+      ("Error while parsing! Got unexpected value \"beep boop\" for \"page\" query parameter."
+       (expected_one_of (
+         (a a)
+         (b bee)
+         (c c))))
+      |}]
+  ;;
+
+  let%expect_test "parse no key found" =
+    let original = Uri.make () in
+    print_endline (Uri.to_string original);
+    [%expect {| |}];
+    Expect_test_helpers_base.require_does_raise (fun () -> projection.parse_exn original);
+    [%expect
+      {| "Error while parsing url! Expected key \"page=<page>\" inside of the url's query." |}]
+  ;;
+
+  let%expect_test "duplicate query identifiers" =
+    let module Url = struct
       type t =
-        | A of string
+        | A
         | B
-        | C
-      [@@deriving sexp_of, typed_variants, equal]
+      [@@deriving typed_variants]
 
       let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
-        | A -> Parser.from_query_required Value_parser.string
+        | A -> Parser.unit
         | B -> Parser.unit
-        | C -> Parser.unit
       ;;
 
-      let identifier_for_variant : type a. a Typed_variant.t -> string = function
-        | A -> "a"
-        | B -> "bee"
-        | C -> "c"
-      ;;
+      let identifier_for_variant _ = "a"
     end
+    in
+    let parser = Parser.Query_based_variant.make ~key:"page" (module Url) in
+    let versioned_parser = Versioned_parser.first_parser parser in
+    Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
+    [%expect
+      {|
+      Error with parser.
+      ┌─────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
+      │ Check name                                              │ Error message                                                                            │
+      ├─────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+      │ Ambiguous choices for picking variant constructor check │ ("Duplicate identifiers to distinguish variants found!"                                  │
+      │                                                         │  (duplicate_identifiers (a)))                                                            │
+      │ Duplicate urls check                                    │ ("Ambiguous, duplicate urls expressed in parser! This was probably caused due to conflic │
+      │                                                         │ ting renames with [with_prefix] or [with_remaining_path]."                               │
+      │                                                         │  (duplicate_urls (/?page=a)))                                                            │
+      └─────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
+      |}]
+  ;;
 
-    let parser =
-      Uri_parsing.Parser.Query_based_variant.make (module Well_behaved_url) ~key:"page"
-    ;;
+  let%expect_test "collision with other query parameter" =
+    let module Url = struct
+      type t =
+        | A of int
+        | B
+      [@@deriving typed_variants]
 
-    let versioned_parser = Versioned_parser.first_parser parser
+      let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+        | A -> Parser.from_query_required ~key:"page" Value_parser.int
+        | B -> Parser.unit
+      ;;
 
-    let projection =
-      Versioned_parser.eval_for_uri ~equal:[%equal: Well_behaved_url.t] versioned_parser
-    ;;
+      let identifier_for_variant = Typed_variant.name
+    end
+    in
+    let parser = Parser.Query_based_variant.make ~key:"page" (module Url) in
+    let versioned_parser = Versioned_parser.first_parser parser in
+    Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
+    [%expect
+      {|
+      Error with parser.
+      ┌──────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
+      │ Check name           │ Error message                                                                            │
+      ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+      │ Duplicate keys check │ ("Duplicate query keys found! This probably occurred due at least one [~key] being renam │
+      │                      │ ed to the same string in a [from_query_*] parser. Another possibility is that a renamed  │
+      │                      │ key conflicted with an inferred parser."                                                 │
+      │                      │  (duplicate_query_keys_by_url ((/?page=<int>&page=a (page)))))                           │
+      └──────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
+      |}]
+  ;;
 
-    let%expect_test "check ok" =
-      Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
-      [%expect
-        {|
-        URL parser looks good!
-        ┌─────────────────────┐
-        │ All urls            │
-        ├─────────────────────┤
-        │ /?a=<string>&page=a │
-        │ /?page=bee          │
-        │ /?page=c            │
-        └─────────────────────┘
-        |}]
-    ;;
+  let%expect_test "namespaces respected" =
+    let module Nested_record = struct
+      type t =
+        { a : int
+        ; b : int
+        }
+      [@@deriving typed_fields]
 
-    let%expect_test "parse unparse (a)" =
-      let original = Uri.make ~query:[ "page", [ "a" ]; "a", [ "beep boop" ] ] () in
-      print_endline (Uri.to_string original);
-      [%expect {| ?page=a&a=beep%20boop |}];
-      let parsed = projection.parse_exn original in
-      print_s [%sexp (parsed : Well_behaved_url.t Parse_result.t)];
-      [%expect {| ((result (A "beep boop")) (remaining ((path ()) (query ())))) |}];
-      let unparsed = projection.unparse parsed in
-      print_endline (Uri.to_string unparsed);
-      [%expect {| ?a=beep%20boop&page=a |}]
-    ;;
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | A -> Parser.from_query_required Value_parser.int
+        | B -> Parser.from_query_required Value_parser.int
+      ;;
 
-    let%expect_test "parse unparse (b)" =
-      let original = Uri.make ~query:[ "page", [ "bee" ] ] () in
-      print_endline (Uri.to_string original);
-      [%expect {| ?page=bee |}];
-      let parsed = projection.parse_exn original in
-      print_s [%sexp (parsed : Well_behaved_url.t Parse_result.t)];
-      [%expect {| ((result B) (remaining ((path ()) (query ())))) |}];
-      let unparsed = projection.unparse parsed in
-      print_endline (Uri.to_string unparsed);
-      [%expect {| ?page=bee |}]
-    ;;
+      module Path_order = Path_order (Typed_field)
 
-    let%expect_test "parse unknown (beep boop)" =
-      let original = Uri.make ~query:[ "page", [ "beep boop" ] ] () in
-      print_endline (Uri.to_string original);
-      [%expect {| ?page=beep%20boop |}];
-      Expect_test_helpers_base.require_does_raise (fun () ->
-        projection.parse_exn original);
-      [%expect
-        {|
-        ("Error while parsing! Got unexpected value \"beep boop\" for \"page\" query parameter."
-         (expected_one_of (
-           (a a)
-           (b bee)
-           (c c))))
-        |}]
-    ;;
+      let path_order = Path_order.T []
+    end
+    in
+    let module Nested_variant = struct
+      type t =
+        | A of Nested_record.t
+        | B of Nested_record.t
+      [@@deriving typed_variants]
 
-    let%expect_test "parse no key found" =
-      let original = Uri.make () in
-      print_endline (Uri.to_string original);
-      [%expect {| |}];
-      Expect_test_helpers_base.require_does_raise (fun () ->
-        projection.parse_exn original);
-      [%expect
-        {| "Error while parsing url! Expected key \"page=<page>\" inside of the url's query." |}]
-    ;;
+      let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+        | A -> Parser.Record.make (module Nested_record)
+        | B -> Parser.Record.make ~namespace:[ "beep"; "boop" ] (module Nested_record)
+      ;;
 
-    let%expect_test "duplicate query identifiers" =
-      let module Url = struct
-        type t =
-          | A
-          | B
-        [@@deriving typed_variants]
+      let identifier_for_variant = Typed_variant.name
+    end
+    in
+    let module Url = struct
+      type t =
+        | C of Nested_variant.t
+        | D of Nested_variant.t
+      [@@deriving typed_variants]
 
-        let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
-          | A -> Parser.unit
-          | B -> Parser.unit
-        ;;
+      let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+        | C -> Parser.Query_based_variant.make ~key:"child-page" (module Nested_variant)
+        | D -> Parser.Query_based_variant.make ~key:"child-page" (module Nested_variant)
+      ;;
 
-        let identifier_for_variant _ = "a"
-      end
-      in
-      let parser = Parser.Query_based_variant.make ~key:"page" (module Url) in
-      let versioned_parser = Versioned_parser.first_parser parser in
-      Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
-      [%expect
-        {|
-        Error with parser.
-        ┌─────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
-        │ Check name                                              │ Error message                                                                            │
-        ├─────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
-        │ Ambiguous choices for picking variant constructor check │ ("Duplicate identifiers to distinguish variants found!"                                  │
-        │                                                         │  (duplicate_identifiers (a)))                                                            │
-        │ Duplicate urls check                                    │ ("Ambiguous, duplicate urls expressed in parser! This was probably caused due to conflic │
-        │                                                         │ ting renames with [with_prefix] or [with_remaining_path]."                               │
-        │                                                         │  (duplicate_urls (/?page=a)))                                                            │
-        └─────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
-        |}]
-    ;;
-
-    let%expect_test "collision with other query parameter" =
-      let module Url = struct
-        type t =
-          | A of int
-          | B
-        [@@deriving typed_variants]
-
-        let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
-          | A -> Parser.from_query_required ~key:"page" Value_parser.int
-          | B -> Parser.unit
-        ;;
-
-        let identifier_for_variant = Typed_variant.name
-      end
-      in
-      let parser = Parser.Query_based_variant.make ~key:"page" (module Url) in
-      let versioned_parser = Versioned_parser.first_parser parser in
-      Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
-      [%expect
-        {|
-        Error with parser.
-        ┌──────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
-        │ Check name           │ Error message                                                                            │
-        ├──────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
-        │ Duplicate keys check │ ("Duplicate query keys found! This probably occurred due at least one [~key] being renam │
-        │                      │ ed to the same string in a [from_query_*] parser. Another possibility is that a renamed  │
-        │                      │ key conflicted with an inferred parser."                                                 │
-        │                      │  (duplicate_query_keys_by_url ((/?page=<int>&page=a (page)))))                           │
-        └──────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
-        |}]
-    ;;
-
-    let%expect_test "namespaces respected" =
-      let module Nested_record = struct
-        type t =
-          { a : int
-          ; b : int
-          }
-        [@@deriving typed_fields]
-
-        let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
-          | A -> Parser.from_query_required Value_parser.int
-          | B -> Parser.from_query_required Value_parser.int
-        ;;
-
-        module Path_order = Path_order (Typed_field)
-
-        let path_order = Path_order.T []
-      end
-      in
-      let module Nested_variant = struct
-        type t =
-          | A of Nested_record.t
-          | B of Nested_record.t
-        [@@deriving typed_variants]
-
-        let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
-          | A -> Parser.Record.make (module Nested_record)
-          | B -> Parser.Record.make ~namespace:[ "beep"; "boop" ] (module Nested_record)
-        ;;
-
-        let identifier_for_variant = Typed_variant.name
-      end
-      in
-      let module Url = struct
-        type t =
-          | C of Nested_variant.t
-          | D of Nested_variant.t
-        [@@deriving typed_variants]
-
-        let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
-          | C -> Parser.Query_based_variant.make ~key:"child-page" (module Nested_variant)
-          | D -> Parser.Query_based_variant.make ~key:"child-page" (module Nested_variant)
-        ;;
-
-        let identifier_for_variant = Typed_variant.name
-      end
-      in
-      let parser = Parser.Query_based_variant.make ~key:"parent-page" (module Url) in
-      let versioned_parser = Versioned_parser.first_parser parser in
-      Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
-      [%expect
-        {|
-        URL parser looks good!
-        ┌──────────────────────────────────────────────────────────────────────┐
-        │ All urls                                                             │
-        ├──────────────────────────────────────────────────────────────────────┤
-        │ /?c.a.a=<int>&c.a.b=<int>&child-page=a&parent-page=c                 │
-        │ /?c.beep.boop.a=<int>&c.beep.boop.b=<int>&child-page=b&parent-page=c │
-        │ /?child-page=a&d.a.a=<int>&d.a.b=<int>&parent-page=d                 │
-        │ /?child-page=b&d.beep.boop.a=<int>&d.beep.boop.b=<int>&parent-page=d │
-        └──────────────────────────────────────────────────────────────────────┘
-        |}]
-    ;;
-  end)
-;;
+      let identifier_for_variant = Typed_variant.name
+    end
+    in
+    let parser = Parser.Query_based_variant.make ~key:"parent-page" (module Url) in
+    let versioned_parser = Versioned_parser.first_parser parser in
+    Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
+    [%expect
+      {|
+      URL parser looks good!
+      ┌──────────────────────────────────────────────────────────────────────┐
+      │ All urls                                                             │
+      ├──────────────────────────────────────────────────────────────────────┤
+      │ /?c.a.a=<int>&c.a.b=<int>&child-page=a&parent-page=c                 │
+      │ /?c.beep.boop.a=<int>&c.beep.boop.b=<int>&child-page=b&parent-page=c │
+      │ /?child-page=a&d.a.a=<int>&d.a.b=<int>&parent-page=d                 │
+      │ /?child-page=b&d.beep.boop.a=<int>&d.beep.boop.b=<int>&parent-page=d │
+      └──────────────────────────────────────────────────────────────────────┘
+      |}]
+  ;;
+end
 
 let%expect_test "path parsing encode decode" =
   let parser = Parser.from_path Value_parser.string in
