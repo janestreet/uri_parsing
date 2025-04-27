@@ -16,8 +16,8 @@ depends: [
   "ppx_typed_fields"
   "textutils"
   "base64"           {>= "3.4.0"}
-  "dune"             {>= "3.11.0"}
-  "js_of_ocaml-ppx"  {>= "5.1.1" & < "5.7.0"}
+  "dune"             {>= "3.17.0"}
+  "js_of_ocaml-ppx"  {= "6.0.1+jst"}
   "re"               {>= "1.8.0"}
   "uri"              {>= "3.0.0"}
 ]

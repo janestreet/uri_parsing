@@ -233,10 +233,11 @@ module Components = struct
   type t =
     { path : string list
     ; query : string list String.Map.t
+    ; fragment : string option [@sexp.option]
     }
   [@@deriving sexp, equal]
 
-  let empty = { path = []; query = String.Map.empty }
+  let empty = { path = []; query = String.Map.empty; fragment = None }
 
   let encode_path path =
     String.concat ~sep:"/" (List.map ~f:(Uri.pct_encode ~component:`Path) path)
@@ -255,13 +256,19 @@ module Components = struct
     |> List.map ~f:Uri.pct_decode
   ;;
 
-  let to_uri ?(encoding_behavior = Percent_encoding_behavior.Correct) { path; query } =
+  let to_uri
+    ?(encoding_behavior = Percent_encoding_behavior.Correct)
+    { path; query; fragment }
+    =
     let path =
       match encoding_behavior with
       | Percent_encoding_behavior.Legacy_incorrect -> String.concat ~sep:"/" path
       | Correct -> encode_path path
     in
-    Uri.empty |> Fn.flip Uri.with_path path |> Fn.flip Uri.with_query (Map.to_alist query)
+    Uri.empty
+    |> Fn.flip Uri.with_path path
+    |> Fn.flip Uri.with_query (Map.to_alist query)
+    |> Fn.flip Uri.with_fragment fragment
   ;;
 
   let of_uri ?(encoding_behavior = Percent_encoding_behavior.Correct) uri =
@@ -279,7 +286,8 @@ module Components = struct
         | [ value ] -> Some value
         | _ -> None)
     in
-    { path; query }
+    let fragment = Uri.fragment uri in
+    { path; query; fragment }
   ;;
 end
 
@@ -297,17 +305,6 @@ module type Uri_parser_intf = sig
   type 'a t
 
   val check_ok_and_print_urls_or_errors : 'a t -> unit
-
-  val eval
-    :  ?encoding_behavior:Percent_encoding_behavior.t
-    -> 'a t
-    -> (Components.t, 'a Parse_result.t) Projection.t
-
-  val eval_for_uri
-    :  ?encoding_behavior:Percent_encoding_behavior.t
-    -> 'a t
-    -> (Uri.t, 'a Parse_result.t) Projection.t
-
   val all_urls : 'a t -> string list
   val to_string : 'a t -> ('a -> string) Staged.t
 end
@@ -339,6 +336,7 @@ module Parser = struct
           ; value_parser : 'a Value_parser.t
           }
           -> 'a option t
+      | From_query_flag : { override_key : string option } -> bool t
       | From_query_optional_with_default :
           { override_key : string option
           ; equal : 'a -> 'a -> bool
@@ -352,6 +350,11 @@ module Parser = struct
           }
           -> 'a list t
       | From_path : 'a Value_parser.t -> 'a t
+      | From_fragment :
+          { value_parser : 'a Value_parser.t
+          ; here : Source_code_position.t
+          }
+          -> 'a option t
       | From_remaining_path : 'a Value_parser.t -> 'a list t
       | With_prefix :
           { prefix : string list
@@ -514,7 +517,9 @@ module Parser = struct
         | Project { input; _ } -> next_declared_path_pattern ~prefix input
         | From_query_required _ -> None
         | From_query_optional _ -> None
+        | From_query_flag _ -> None
         | From_query_optional_with_default _ -> None
+        | From_fragment _ -> None
         | From_query_many _ -> None
         | From_path _ -> Some (prefix @ [ `Ignore ], `Continue)
         | From_remaining_path _ -> Some (prefix, `Continue)
@@ -678,6 +683,10 @@ module Parser = struct
 
   let unit = T.Unit
 
+  let from_fragment ~(here : [%call_pos]) value_parser =
+    T.From_fragment { value_parser; here }
+  ;;
+
   let from_query_required ?key value_parser =
     T.From_query_required { override_key = key; value_parser }
   ;;
@@ -685,6 +694,8 @@ module Parser = struct
   let from_query_optional ?key value_parser =
     T.From_query_optional { override_key = key; value_parser }
   ;;
+
+  let from_query_flag ?key () = T.From_query_flag { override_key = key }
 
   let from_query_optional_with_default ?key ~equal value_parser ~default =
     T.From_query_optional_with_default
@@ -748,8 +759,10 @@ module Parser = struct
     | Unit
     | From_query_required _
     | From_query_optional _
+    | From_query_flag _
     | From_query_optional_with_default _
-    | From_query_many _ -> false
+    | From_query_many _
+    | From_fragment _ -> false
   ;;
 
   exception Missing_key of string
@@ -869,7 +882,11 @@ module Parser = struct
             in
             { Parse_result.result; remaining })
       in
-      let unparse { Parse_result.result; remaining = { path = _; query } as remaining } =
+      let unparse
+        { Parse_result.result
+        ; remaining = { path = _; query; fragment = _ } as remaining
+        }
+        =
         read_query_key
           ~override_key
           ~inferred_name_from_parent
@@ -882,6 +899,82 @@ module Parser = struct
                 Map.set query ~key:key_name ~data:[ value_projection.unparse value ]
             in
             { remaining with query })
+      in
+      { Projection.parse_exn; unparse }
+    ;;
+
+    let eval_from_query_flag ~override_key ~current_namespace ~inferred_name_from_parent =
+      let parse_exn (components : Components.t) =
+        read_query_key
+          ~override_key
+          ~inferred_name_from_parent
+          ~current_namespace
+          ~f:(fun key_name ->
+            let result, remaining =
+              match Map.find components.query key_name with
+              | None -> false, components
+              | Some [] ->
+                let remaining =
+                  let query = Map.remove components.query key_name in
+                  { components with query }
+                in
+                true, remaining
+              | Some [ (("true" | "false") as bool) ] ->
+                (* NOTE: This is provided for convenience/ease of migration from previous
+                   uses of [Parser.from_query_*] *)
+                let remaining =
+                  let query = Map.remove components.query key_name in
+                  { components with query }
+                in
+                Bool.of_string bool, remaining
+              | Some (_ :: _ as values) ->
+                raise_s
+                  [%message
+                    "Expected no values in query boolean flag, but found values"
+                      (values : string list)]
+            in
+            { Parse_result.result; remaining })
+      in
+      let unparse
+        { Parse_result.result
+        ; remaining = { path = _; query; fragment = _ } as remaining
+        }
+        =
+        read_query_key
+          ~override_key
+          ~inferred_name_from_parent
+          ~current_namespace
+          ~f:(fun key_name ->
+            let query =
+              match result with
+              | false -> query
+              | true -> Map.set query ~key:key_name ~data:[]
+            in
+            { remaining with query })
+      in
+      { Projection.parse_exn; unparse }
+    ;;
+
+    let eval_from_fragment (type a) ~(value_parser : a Value_parser.t) =
+      let value_projection = Value_parser.eval value_parser in
+      let parse_exn (components : Components.t) =
+        let result =
+          match components.fragment with
+          | None -> None
+          | Some fragment -> Some (value_projection.parse_exn fragment)
+        in
+        let remaining = { components with fragment = None } in
+        { Parse_result.result; remaining }
+      in
+      let unparse { Parse_result.result; remaining } =
+        let remaining =
+          match result with
+          | None -> remaining
+          | Some result ->
+            let fragment = Some (value_projection.unparse result) in
+            { remaining with fragment }
+        in
+        remaining
       in
       { Projection.parse_exn; unparse }
     ;;
@@ -919,7 +1012,11 @@ module Parser = struct
             in
             { Parse_result.result; remaining })
       in
-      let unparse { Parse_result.result; remaining = { path = _; query } as remaining } =
+      let unparse
+        { Parse_result.result
+        ; remaining = { path = _; query; fragment = _ } as remaining
+        }
+        =
         read_query_key
           ~override_key
           ~inferred_name_from_parent
@@ -1416,11 +1513,7 @@ module Parser = struct
       in
       let parse_exn (components : Components.t) =
         match Map.find components.query key with
-        | None | Some [] ->
-          raise_s
-            [%message
-              [%string
-                {|Error while parsing url! Expected key "%{key}=<page>" inside of the url's query.|}]]
+        | None | Some [] -> raise (Missing_key key)
         | Some (_ :: _ :: _) ->
           raise_s
             [%message
@@ -1549,6 +1642,9 @@ module Parser = struct
           ~value_parser
           ~current_namespace
           ~inferred_name_from_parent
+      | From_query_flag { override_key } ->
+        eval_from_query_flag ~override_key ~current_namespace ~inferred_name_from_parent
+      | From_fragment { value_parser; here = _ } -> eval_from_fragment ~value_parser
       | From_query_optional_with_default { override_key; equal; value_parser; default } ->
         eval_from_query_optional_with_default
           ~override_key
@@ -1650,6 +1746,7 @@ module Parser = struct
           { override_key : string option [@sexp.option]
           ; value_parser : Value_parser.Skeleton.t
           }
+      | From_query_flag of { override_key : string option [@sexp.option] }
       | From_query_optional_with_default of
           { override_key : string option [@sexp.option]
           ; value_parser : Value_parser.Skeleton.t
@@ -1659,6 +1756,10 @@ module Parser = struct
           ; value_parser : Value_parser.Skeleton.t
           }
       | From_path of Value_parser.Skeleton.t
+      | From_fragment of
+          { value_parser : Value_parser.Skeleton.t
+          ; here : Source_code_position.Stable.V1.t
+          }
       | From_remaining_path of Value_parser.Skeleton.t
       | With_prefix of
           { prefix : string list
@@ -1700,6 +1801,7 @@ module Parser = struct
       | From_query_optional { override_key; value_parser } ->
         From_query_optional
           { override_key; value_parser = Value_parser.Skeleton.of_parser value_parser }
+      | From_query_flag { override_key } -> From_query_flag { override_key }
       | From_query_optional_with_default { override_key; value_parser; _ } ->
         From_query_optional_with_default
           { override_key; value_parser = Value_parser.Skeleton.of_parser value_parser }
@@ -1707,6 +1809,9 @@ module Parser = struct
         From_query_many
           { override_key; value_parser = Value_parser.Skeleton.of_parser value_parser }
       | From_path value_parser -> From_path (Value_parser.Skeleton.of_parser value_parser)
+      | From_fragment { value_parser; here } ->
+        From_fragment
+          { value_parser = Value_parser.Skeleton.of_parser value_parser; here }
       | From_remaining_path value_parser ->
         From_remaining_path (Value_parser.Skeleton.of_parser value_parser)
       | With_prefix { prefix; t } -> With_prefix { prefix; t = of_parser t }
@@ -1788,12 +1893,14 @@ module Parser = struct
       | Unit
       | From_query_required _
       | From_query_optional _
+      | From_query_flag _
       | From_query_optional_with_default _
       | From_path _
       | Record _
       | Variant _
       | Query_based_variant _
-      | New_parser _ -> false
+      | New_parser _
+      | From_fragment _ -> false
       | Project t
       | With_prefix { t; _ }
       | With_remaining_path { t; _ }
@@ -1804,6 +1911,7 @@ module Parser = struct
       | Project t | Optional_query_fields { t; _ } -> has_enough_information_on_its_own t
       | From_query_required { override_key; _ }
       | From_query_optional { override_key; _ }
+      | From_query_flag { override_key; _ }
       | From_query_optional_with_default { override_key; _ }
       | From_query_many { override_key; _ } -> Option.is_some override_key
       | New_parser { new_; prev } ->
@@ -1815,7 +1923,8 @@ module Parser = struct
       | With_remaining_path _
       | Record _
       | Variant _
-      | Query_based_variant _ -> true
+      | Query_based_variant _
+      | From_fragment _ -> true
     ;;
   end
 
@@ -1878,7 +1987,11 @@ module Parser = struct
       }
     [@@deriving compare, sexp]
 
-    let to_string t = t.key ^ "=" ^ t.value
+    let to_string t =
+      match t.value with
+      | "" -> t.key
+      | _ -> t.key ^ "=" ^ t.value
+    ;;
   end
 
   module Url_shape = struct
@@ -1886,6 +1999,7 @@ module Parser = struct
       type t =
         { path : [ `Pattern of string | `Value of (string[@compare.ignore]) ] list
         ; query : Query_tag.t list
+        ; fragment : string option
         }
       [@@deriving compare, sexp]
     end
@@ -1910,7 +2024,12 @@ module Parser = struct
                  (List.map t.query ~f:Query_tag.to_string)
                  ~compare:String.compare)
       in
-      "/" ^ path ^ query
+      let fragment =
+        match t.fragment with
+        | None -> ""
+        | Some fragment -> "#" ^ fragment
+      in
+      "/" ^ path ^ query ^ fragment
     ;;
   end
 
@@ -1943,6 +2062,7 @@ module Parser = struct
               ; value = Value_parser.Skeleton.to_summary value_parser |> wrap_if_multiple
               }
               :: current_shape.query
+          ; fragment = current_shape.fragment
           }
         ]
       | From_query_optional { override_key; value_parser }
@@ -1961,6 +2081,27 @@ module Parser = struct
                   [%string "<optional%{Value_parser.Skeleton.to_summary value_parser}>"]
               }
               :: current_shape.query
+          ; fragment = current_shape.fragment
+          }
+        ]
+      | From_fragment { value_parser; here = _ } ->
+        let fragment = Value_parser.Skeleton.to_summary value_parser in
+        [ { Url_shape.path = current_shape.path
+          ; query = current_shape.query
+          ; fragment = Some fragment
+          }
+        ]
+      | From_query_flag { override_key } ->
+        let key =
+          Eval.read_query_key
+            ~override_key
+            ~inferred_name_from_parent
+            ~current_namespace
+            ~f:Fn.id
+        in
+        [ { Url_shape.path = current_shape.path
+          ; query = { key = [%string "[%{key}]"]; value = "" } :: current_shape.query
+          ; fragment = current_shape.fragment
           }
         ]
       | Project t ->
@@ -1974,6 +2115,7 @@ module Parser = struct
         let value = wrap_if_multiple (Value_parser.Skeleton.to_summary value_parser) in
         [ { Url_shape.path = current_shape.path @ [ `Value value ]
           ; query = current_shape.query
+          ; fragment = current_shape.fragment
           }
         ]
       | With_prefix { prefix; t } | With_remaining_path { needed_path = prefix; t } ->
@@ -2082,7 +2224,7 @@ module Parser = struct
     in
     all_url_shapes
       skeleton
-      ~current_shape:{ Url_shape.path = []; query = [] }
+      ~current_shape:{ Url_shape.path = []; query = []; fragment = None }
       ~current_namespace:[]
       ~parent_namespace:[]
       ~inferred_name_from_parent:None
@@ -2139,10 +2281,11 @@ module Parser = struct
     | Optional_query_fields { t; _ } -> check_that_path_orders_are_ok t
     | From_query_required _ -> ()
     | From_query_optional _ -> ()
+    | From_query_flag _ -> ()
     | From_query_optional_with_default _ -> ()
     | From_query_many _ -> ()
     | From_path _ -> ()
-    | From_remaining_path _ -> ()
+    | From_remaining_path _ | From_fragment _ -> ()
     | With_prefix { t; _ } -> check_that_path_orders_are_ok t
     | With_remaining_path { t; _ } -> check_that_path_orders_are_ok t
     | Record { record_module; _ } ->
@@ -2201,6 +2344,8 @@ module Parser = struct
           t
       | From_query_required _ -> has_seen_end_of_path
       | From_query_optional _ -> has_seen_end_of_path
+      | From_fragment _ -> has_seen_end_of_path
+      | From_query_flag _ -> has_seen_end_of_path
       | From_query_optional_with_default _ -> has_seen_end_of_path
       | From_query_many _ -> has_seen_end_of_path
       | From_path _ ->
@@ -2281,13 +2426,15 @@ module Parser = struct
     | Unit
     | From_query_required _
     | From_query_optional _
+    | From_query_flag _
     | From_query_optional_with_default _
     | From_query_many _
     | From_path _
     | From_remaining_path _
     | With_prefix _
     | With_remaining_path _
-    | Record _ -> ()
+    | Record _
+    | From_fragment _ -> ()
     | Project { input; _ } -> check_that_there_are_no_ambiguous_parsers_at_any_level input
     | Optional_query_fields { t; _ } ->
       check_that_there_are_no_ambiguous_parsers_at_any_level t
@@ -2337,10 +2484,12 @@ module Parser = struct
     | Project { input; projection = _ } -> check_that_there_are_sane_new_parsers input
     | From_query_required _ -> ()
     | From_query_optional _ -> ()
+    | From_query_flag _ -> ()
     | From_query_optional_with_default _ -> ()
     | From_query_many _ -> ()
     | From_path _ -> ()
     | From_remaining_path _ -> ()
+    | From_fragment _ -> ()
     | With_prefix { t; prefix = _ } -> check_that_there_are_sane_new_parsers t
     | With_remaining_path { t; needed_path = _ } ->
       check_that_there_are_sane_new_parsers t
@@ -2380,6 +2529,74 @@ module Parser = struct
                (prev : Variant.Match_pattern.t option)])
   ;;
 
+  let rec check_that_there_are_no_multiple_fragment_parsers
+    : type a. has_seen_fragment:bool -> a T.t -> bool
+    =
+    (* NOTE: We do not want || to short-circuit. *)
+    let ( || ) a b = a || b in
+    fun ~has_seen_fragment t ->
+      match t with
+      | Unit -> has_seen_fragment
+      | Project { input; projection = _ } ->
+        check_that_there_are_no_multiple_fragment_parsers ~has_seen_fragment input
+      | From_query_required _
+      | From_query_optional _
+      | From_query_flag _
+      | From_query_optional_with_default _
+      | From_query_many _
+      | From_path _
+      | From_remaining_path _ -> has_seen_fragment
+      | From_fragment { value_parser = _; here } ->
+        (match has_seen_fragment with
+         | true ->
+           raise_s
+             [%message
+               "Fragment parser ambiguity, there can be at most one fragment parser for \
+                a given URL shape, but found at least 2."
+                 ~second_parser_is_here:(here : Source_code_position.t)]
+         | false -> true)
+      | With_prefix { t; prefix = _ } ->
+        check_that_there_are_no_multiple_fragment_parsers ~has_seen_fragment t
+      | With_remaining_path { t; needed_path = _ } ->
+        check_that_there_are_no_multiple_fragment_parsers ~has_seen_fragment t
+      | Record { record_module; override_namespace = _ } ->
+        let module M =
+          (val record_module : Record.Cached_s with type Typed_field.derived_on = a)
+        in
+        List.fold
+          M.Typed_field.Packed.all
+          ~init:has_seen_fragment
+          ~f:(fun has_seen_fragment { f = T f } ->
+            has_seen_fragment
+            || check_that_there_are_no_multiple_fragment_parsers
+                 ~has_seen_fragment
+                 (M.parser_for_field f))
+      | Variant { variant_module; override_namespace = _ } ->
+        let module M =
+          (val variant_module : Variant.Cached_s with type Typed_variant.derived_on = a)
+        in
+        has_seen_fragment
+        || List.exists M.Typed_variant.Packed.all ~f:(fun { f = T v } ->
+          check_that_there_are_no_multiple_fragment_parsers
+            ~has_seen_fragment
+            (M.parser_for_variant v))
+      | Query_based_variant { variant_module; override_namespace = _; key = _ } ->
+        let module M =
+          (val variant_module
+            : Query_based_variant.S with type Typed_variant.derived_on = a)
+        in
+        has_seen_fragment
+        || List.exists M.Typed_variant.Packed.all ~f:(fun { f = T v } ->
+          check_that_there_are_no_multiple_fragment_parsers
+            ~has_seen_fragment
+            (M.parser_for_variant v))
+      | Optional_query_fields { t } ->
+        check_that_there_are_no_multiple_fragment_parsers ~has_seen_fragment t
+      | New_parser { new_; prev; f = _ } ->
+        check_that_there_are_no_multiple_fragment_parsers ~has_seen_fragment new_
+        || check_that_there_are_no_multiple_fragment_parsers ~has_seen_fragment prev
+  ;;
+
   let run_check ~name ~f = name, Or_error.try_with f
 
   let check_ok t =
@@ -2401,6 +2618,11 @@ module Parser = struct
             "Unreachable previous parser. The previous parser and the new parser have \
              different paths."
           ~f:(fun () -> check_that_there_are_sane_new_parsers t)
+      ; run_check ~name:"Multiple fragment parsers" ~f:(fun () ->
+          let _ : bool =
+            check_that_there_are_no_multiple_fragment_parsers ~has_seen_fragment:false t
+          in
+          ())
       ]
     in
     let checks_that_need_all_information_to_succeed =
@@ -2533,10 +2755,11 @@ module Versioned_parser = struct
   let rec eval
     : type a.
       ?encoding_behavior:Percent_encoding_behavior.t
+      -> ?print_version_errors:bool
       -> a t
       -> (Components.t, a Parse_result.t) Projection.t
     =
-    fun ?encoding_behavior -> function
+    fun ?encoding_behavior ?(print_version_errors = true) -> function
     | Non_typed_parser projection -> eval_non_typed_parser projection
     | First_typed_parser parser -> Parser.eval ?encoding_behavior parser
     | New_parser { current_parser; map; previous_parser } ->
@@ -2545,11 +2768,13 @@ module Versioned_parser = struct
       let parse_exn (components : Components.t) =
         try current_projection.parse_exn components with
         | error ->
-          print_s
-            [%message
-              "URL unrecognized, maybe this is an old URL? Attempting to parse with a \
-               previous URL parser. Here's the error of the current parser:"
-                (error : Exn.t)];
+          if print_version_errors
+          then
+            print_s
+              [%message
+                "URL unrecognized, maybe this is an old URL? Attempting to parse with a \
+                 previous URL parser. Here's the error of the current parser:"
+                  (error : Exn.t)];
           let result = previous_projection.parse_exn components in
           { Parse_result.result = map result.result; remaining = result.remaining }
       in
@@ -2557,9 +2782,10 @@ module Versioned_parser = struct
       { Projection.parse_exn; unparse }
   ;;
 
-  let eval_for_uri ?encoding_behavior (t : 'a t) : (Uri.t, 'a Parse_result.t) Projection.t
+  let eval_for_uri ?encoding_behavior ?print_version_errors (t : 'a t)
+    : (Uri.t, 'a Parse_result.t) Projection.t
     =
-    let projection = eval ?encoding_behavior t in
+    let projection = eval ?encoding_behavior ?print_version_errors t in
     let parse_exn (uri : Uri.t) =
       projection.parse_exn (Components.of_uri ?encoding_behavior uri)
     in

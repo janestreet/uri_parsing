@@ -30,7 +30,7 @@ module Value_parser : sig
   (** Turns a parser of type 'a to a parser of type 'b.
 
       Properties:
-      {ul {- If the parse_exn function fails, so does the entire parser.}} *)
+      - If the parse_exn function fails, so does the entire parser. *)
   val project : 'a t -> parse_exn:('a -> 'b) -> unparse:('b -> 'a) -> 'b t
 
   (** [fallback parser value] parses into [value] every time that [parser] fails. *)
@@ -42,14 +42,13 @@ module Value_parser : sig
         project (fallback string)
       ]}
 
-      appearing as  "/?q=<project<fallback<string>>>"
+      appearing as "/?q=<project<fallback<string>>>"
 
       you could do:
       {[
         name "username" (project (fallback string))
       ]}
-      and it would appear as "/?q=<username>"
-  *)
+      and it would appear as "/?q=<username>" *)
   val name : string -> 'a t -> 'a t
 end
 
@@ -57,18 +56,19 @@ end
 
     Each kind of parser consumes from this "pool" of parts of a url.
 
-    Parsers that consume from the query will lookup the query map, parse, and consume
-    the element from the query.
+    Parsers that consume from the query will lookup the query map, parse, and consume the
+    element from the query.
 
     Parsers that consume from the path will read the path in sequential order, from the
-    beginning of the path to the end of the path. Once a path parser, is done parsing,
-    it will remove its consumed elements from the path, and the next path parser will
+    beginning of the path to the end of the path. Once a path parser, is done parsing, it
+    will remove its consumed elements from the path, and the next path parser will
     continue where it left off. *)
 module Components : sig
   type t =
     { path : string list (** "foo/bar" -> ["foo"; "bar"] *)
     ; query : string list String.Map.t
     (** "?foo=1&bar=2" -> String.Map.of_alist_exn ["foo", ["1"]; "bar", ["2"]] *)
+    ; fragment : string option
     }
   [@@deriving sexp, equal]
 
@@ -96,33 +96,33 @@ module Percent_encoding_behavior : sig
       also does its own percent encoding, additional testing should be done to ensure
       backwards compatibility.
 
-      The first implementation of bonsai_web_ui_url/uri_parsing originally
-      mishandled pct encoding (e.g. sometimes " " got translated to %20, but
-      when translated back, it sometimes translated back to "%20" instead of
-      to " ")
+      The first implementation of bonsai_web_ui_url/uri_parsing originally mishandled pct
+      encoding (e.g. sometimes " " got translated to %20, but when translated back, it
+      sometimes translated back to "%20" instead of to " ")
 
-      Changing this behavior is ~generally _not_ a breaking change, but could
-      be a breaking change in the following contrived situation:
+      Changing this behavior is ~generally _not_ a breaking change, but could be a
+      breaking change in the following contrived situation:
 
-      1. Your app handled the pct_encoding bug, but defensively doing pct encoding/decoding.
-      2. Correcting the behavior on [uri_parsing] still results in your parsing being
-      able to parse/unparse url's, but the change in behavior is that now things are
-      percent encoded twice, but your app should still be able to decode it correctly as
-      it'd also be decoded twice.
+      1. Your app handled the pct_encoding bug, but defensively doing pct
+         encoding/decoding.
+      2. Correcting the behavior on [uri_parsing] still results in your parsing being able
+         to parse/unparse url's, but the change in behavior is that now things are percent
+         encoded twice, but your app should still be able to decode it correctly as it'd
+         also be decoded twice.
       3. The change in behavior is that if you had an _already existing_ URL whose value
-      correct happens to look like a pct_encoded string, and you then pct_encoded it once
-      (now it looks like a pct_encoded string twice), before you only decoded it one step,
-      but after the change you would've decoded it twice.
+         correct happens to look like a pct_encoded string, and you then pct_encoded it
+         once (now it looks like a pct_encoded string twice), before you only decoded it
+         one step, but after the change you would've decoded it twice.
 
       New links are not affected by this; only old links are.
 
       We expect this situation to be rare, but (in a contrived scenario) an app's links
-      could generate links that look pct_encoded all the time, and if your users sent a lot
-      of links _all_ of the old links would stop working.
+      could generate links that look pct_encoded all the time, and if your users sent a
+      lot of links _all_ of the old links would stop working.
 
-      If your app generates "normal"-looking links (without %'s in them or anything that looks
-      to be %-encoded). It is totally safe/no changes in behavior (other than you should now be
-      able to correctly put % in the path) are expected. *)
+      If your app generates "normal"-looking links (without %'s in them or anything that
+      looks to be %-encoded). It is totally safe/no changes in behavior (other than you
+      should now be able to correctly put % in the path) are expected. *)
   type t =
     | Legacy_incorrect
     | Correct
@@ -131,13 +131,35 @@ end
 module type Uri_parser_intf = sig
   type 'a t
 
-  (** You should have an expect test with this just below your routes definition,
-      so that you can see what your URL scheme looks like, and/or any errors.
+  (** You should have an expect test with this just below your routes definition, so that
+      you can see what your URL scheme looks like, and/or any errors.
 
       Runs static checks, and shows all of the url shapes that the parser can parse. It
-      lets you know if a URL shape sneakily changes or if there is any ambiguity in
-      your parser. It tries its best to suggest possible fixes too.*)
+      lets you know if a URL shape sneakily changes or if there is any ambiguity in your
+      parser. It tries its best to suggest possible fixes too. *)
   val check_ok_and_print_urls_or_errors : 'a t -> unit
+
+  (** Returns a list of the shapes of all the URLs given that the parser can parse. *)
+  val all_urls : 'a t -> string list
+
+  (** Creates a URL that you can attach to an [a] tag as an href to reference another URL
+      from your site. The function is staged because it "evaluates" the parser which
+      _could_ be an expensive operation. *)
+  val to_string : 'a t -> ('a -> string) Staged.t
+end
+
+(** Path order is one of the scarier parts of the API and is explained further in the
+    explanation for [S.path_order]. *)
+module Path_order (M : Typed_fields_lib.S) : sig
+  type 'a t' =
+    | [] : unit t'
+    | ( :: ) : 'a M.t * 'b t' -> ('a -> 'b) t'
+
+  type t = T : 'a t' -> t
+end
+
+module Parser : sig
+  include Uri_parser_intf
 
   (** "Evaluates" a ['a t] into a projection that parses to/from [Components.t] to
       ['a Parse_result.t]. *)
@@ -155,57 +177,49 @@ module type Uri_parser_intf = sig
   (** Returns a list of the shapes of all the URLs given that the parser can parse. *)
   val all_urls : 'a t -> string list
 
-  (** Creates a URL that you can attach to an [a] tag as an href to reference another URL
-      from your site. The function is staged because it "evaluates" the parser which _could_
-      be an expensive operation. *)
-  val to_string : 'a t -> ('a -> string) Staged.t
-end
-
-(** Path order is one of the scarier parts of the API and is explained further in the
-    explanation for [S.path_order]. *)
-module Path_order (M : Typed_fields_lib.S) : sig
-  type 'a t' =
-    | [] : unit t'
-    | ( :: ) : 'a M.t * 'b t' -> ('a -> 'b) t'
-
-  type t = T : 'a t' -> t
-end
-
-module Parser : sig
-  include Uri_parser_intf
-
-  (** Returns a list of the shapes of all the URLs given that the parser can parse. *)
-  val all_urls : 'a t -> string list
-
   (** Like [Value_parser.project], but works at the [Parser.t] level. *)
   val project : 'a t -> parse_exn:('a -> 'b) -> unparse:('b -> 'a) -> 'b t
 
-  (** Runs the given ['a t], if at any point its given parse fails due to a
-      missing query_field, this fill parse into [None], otherwise, this will parse
-      into [Some (* What 'a t would've parsed to *)].
+  (** Runs the given ['a t], if at any point its given parse fails due to a missing
+      query_field, this fill parse into [None], otherwise, this will parse into
+      [Some (* What 'a t would've parsed to *)].
 
       When this parses to [None], the components that will be given to the next parse will
-      be the same ones that [optional_query_fields] received, as if it were a no-op regardless
-      if a subset of the parser suceeded.
-  *)
+      be the same ones that [optional_query_fields] received, as if it were a no-op
+      regardless if a subset of the parser suceeded. *)
   val optional_query_fields : 'a t -> 'a option t
+
+  (** [from_fragment valiue_parser] will use the given ['a Value_parser] to parse/unparse
+      the "fragment" of the URL.
+
+      e.g. https://foo#some_section.
+
+      - Parses into [None] if fragment does not exist.
+
+      - Parses into [Some] if the fragment exists. *)
+  val from_fragment : here:[%call_pos] -> 'a Value_parser.t -> 'a option t
 
   (** Looks up a key from components. If it's missing, parsing fails.
 
       The key is determined with the following priority:
       1. If [?key] is given, then the given key is used.
       2. If the parser is inside of a record or variant parser, then the field
-      name/constructor name that the parser name is in will be the key that is used.
+         name/constructor name that the parser name is in will be the key that is used.
       3. Key can't be inferred and an exception will be raised.
 
-      If you use [check_ok_and_print_urls_or_errors], your parser will statically fail
-      in an expect test, rather than failing on runtime.
-  *)
+      If you use [check_ok_and_print_urls_or_errors], your parser will statically fail in
+      an expect test, rather than failing on runtime. *)
   val from_query_required : ?key:string -> 'a Value_parser.t -> 'a t
 
-  (** Like [from_query_required], but parses into [None] if key is missing from URL's
+  (** Like [from_query_required], but parses into [None] if key is missing from the URL's
       query. *)
   val from_query_optional : ?key:string -> 'a Value_parser.t -> 'a option t
+
+  (** Like [from_query_optional], but parses into [false] if key is missing from the URL's
+      and [true] if the key is present without a payload:
+
+      e.g. "http://foo.com/?some-flag" -> true "http://foo.com/" -> false *)
+  val from_query_flag : ?key:string -> unit -> bool t
 
   (** Like [from_query_required], but parses into the ['a] default value that's given to
       it.
@@ -226,11 +240,7 @@ module Parser : sig
 
       [from_query_many ~key:"q" Value_parser.int] parses into:
 
-      "?q=1,2,3" => [1; 2; 3]
-      "?q=1" => [1]
-      "?q" => []
-      "?" => []
-  *)
+      "?q=1,2,3" => [1; 2; 3] "?q=1" => [1] "?q" => [] "?" => [] *)
   val from_query_many : ?key:string -> 'a Value_parser.t -> 'a list t
 
   (** Like [from_query_many], but fails if there is not a single element in the list. *)
@@ -245,19 +255,18 @@ module Parser : sig
   val from_path : 'a Value_parser.t -> 'a t
 
   (** [from_paths] equivalent of [from_query_many]. Like [from_path] except that instead
-      of just taking one element from the path list, it will take everything from the
-      path list and run the given ['a Value_parser.t] through it.*)
+      of just taking one element from the path list, it will take everything from the path
+      list and run the given ['a Value_parser.t] through it. *)
   val from_remaining_path : 'a Value_parser.t -> 'a list t
 
-  (** [with_prefix prefix next] will fail if the path that it receives does not start
-      with [prefix]. If there is a prefix match, then [next] will continue parsing. *)
+  (** [with_prefix prefix next] will fail if the path that it receives does not start with
+      [prefix]. If there is a prefix match, then [next] will continue parsing. *)
   val with_prefix : string list -> 'a t -> 'a t
 
   (** [with_remaining_path] is just like [with_prefix] just that instead of only needing
       the string list that it receives to match like a prefix, the entire path needs to
       equal the string that its given. No more path parsing is allowed inside of the
-      parser that's given to [with_remaining_path].
-  *)
+      parser that's given to [with_remaining_path]. *)
   val with_remaining_path : string list -> 'a t -> 'a t
 
   (** Fails to parse if path is not empty. If path is empty, its input parser continues
@@ -269,11 +278,10 @@ module Parser : sig
       (** You can derive this module with [@@deriving typed_variants] on t. *)
       module Typed_variant : Typed_variants_lib.S
 
-      (** Given a typed variant, it should return the parser that you want to use for
-          that variant's constructor. For example:
+      (** Given a typed variant, it should return the parser that you want to use for that
+          variant's constructor. For example:
 
           {[
-
             module My_url = struct
               type t =
                 | Foo
@@ -283,31 +291,29 @@ module Parser : sig
               let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
                 | Foo -> Parser.unit
                 | Bar -> Parser.from_path Value_parser.int
+              ;;
             end
 
             let my_parser = Variant.make (module My_url)
           ]}
 
-
           Which variant constructor is used for a given url? The following hierarchy
           exists:
 
           1. If the given parser has a "constant" part of a path, like [with_prefix] or
-          [with_remaining_path], then the very next one in the parse chain is used.
+             [with_remaining_path], then the very next one in the parse chain is used.
           2. If the given parser does not have any "constant" parts of a path, then the
-          constructors name is used.
+             constructors name is used.
           3. If two constructors, both match, the one with most specificity is used (i.e
-          longest match first and if tie, then from_remaining_path wins over
-          with_prefix). Furthermore, if there is a "tie", then this is a static error.
-      *)
+             longest match first and if tie, then from_remaining_path wins over
+             with_prefix). Furthermore, if there is a "tie", then this is a static error. *)
       val parser_for_variant : 'a Typed_variant.t -> 'a t
     end
 
     (** Makes a parser for 'a where 'a is a Variant.
 
         For documentation/examples on the ?namespace optional parameter, please read the
-        documentation on Record.make
-    *)
+        documentation on Record.make *)
     val make
       :  ?namespace:string list
       -> (module S with type Typed_variant.derived_on = 'a)
@@ -321,11 +327,10 @@ module Parser : sig
         (e.g. ?page=Home or ?page=Settings). *)
 
     module type S = sig
-      (** Given a typed variant, it should return the parser that you want to use for
-          that variant's constructor. For example:
+      (** Given a typed variant, it should return the parser that you want to use for that
+          variant's constructor. For example:
 
           {[
-
             module My_url = struct
               type t =
                 | Foo
@@ -335,19 +340,21 @@ module Parser : sig
               let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
                 | Foo -> Parser.unit
                 | Bar -> Parser.from_path Value_parser.int
+              ;;
 
-              let identifier_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+              let identifier_for_variant : type a. a Typed_variant.t -> a Parser.t
+                = function
                 | Foo -> "foo"
                 | Bar -> "settings"
+              ;;
             end
 
             let my_parser = Query_based_variant.make ~key:"page" (module My_url)
           ]}
 
-          Since we picked "foo", for the "Foo" constructor, and also "settings" for the "Bar"
-          constructor, when "?page=foo", we'll go with Foo, and when "?page=settings" we'll
-          go with Bar.
-      *)
+          Since we picked "foo", for the "Foo" constructor, and also "settings" for the
+          "Bar" constructor, when "?page=foo", we'll go with Foo, and when
+          "?page=settings" we'll go with Bar. *)
 
       include Variant.S
 
@@ -372,65 +379,66 @@ module Parser : sig
       (** You can derive this module with [@@deriving typed_fields] on t. *)
       module Typed_field : Typed_fields_lib.S
 
-      (**
-         Given a typed field (you can get this by [@@deriving typed_fields] on t),
-         it should return the parser that you want to use for that field. For example:
+      (** Given a typed field (you can get this by [@@deriving typed_fields] on t), it
+          should return the parser that you want to use for that field. For example:
 
-         {[
-           module My_url = struct
-             type t =
-               { foo : int
-               ; bar : int option
-               } [@@deriving typed_fields, sexp, equal]
+          {[
+            module My_url = struct
+              type t =
+                { foo : int
+                ; bar : int option
+                }
+              [@@deriving typed_fields, sexp, equal]
 
-             let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
-               | Foo -> Parser.from_query_required Value_parser.int
-               | Bar -> Parser.from_query_optional Value_parser.int
+              let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+                | Foo -> Parser.from_query_required Value_parser.int
+                | Bar -> Parser.from_query_optional Value_parser.int
+              ;;
 
-             let path_order = []
-           end
+              let path_order = []
+            end
 
-           let my_parser = Record.make (module My_url)
-         ]}
-      *)
+            let my_parser = Record.make (module My_url)
+          ]} *)
       val parser_for_field : 'a Typed_field.t -> 'a t
 
-      (** Path order is one of the more uglier, verbose parts of the API, but it solves
-          a problem that's hard to solve otherwise: Which order to parse record fields?
+      (** Path order is one of the more uglier, verbose parts of the API, but it solves a
+          problem that's hard to solve otherwise: Which order to parse record fields?
 
           1. A record has multiple fields, so it needs to run multiple parsers.
           2. Some parsers need to parse, and more imporantly "consume" things from the
-          path.
+             path.
           3. Because of this, ordering matters, (e.g. "<int>/<string>" is different from
-          "<string>/int")
+             "<string>/int")
 
           [@@deriving typed_fields] gives enough information to solve these questions by
           the order that the fields are declared in, but it makes overriding things
           weird + prone to mysteriously change if the ordering of the fields in the type
           definition is changed/new fields are added in the future.
 
-          [path_order] allows you to explicitly state the order in which the path
-          fields' parsers should run:
+          [path_order] allows you to explicitly state the order in which the path fields'
+          parsers should run:
 
           {[
             module My_url = struct
               type t =
                 { foo : int
                 ; bar : string
-                } [@@deriving typed_fields, sexp, equal]
+                }
+              [@@deriving typed_fields, sexp, equal]
 
               let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
                 | Foo -> Parser.from_path Value_parser.int
                 | Bar -> Parser.from_path Value_parser.string
-
+              ;;
 
               module Path_order = Record.Path_order (Typed_field)
-              let path_order = Path_order.T [Foo; Bar]
+
+              let path_order = Path_order.T [ Foo; Bar ]
             end
           ]}
 
-          [Foo; Bar] -> "/<int>/<string>"
-          [Bar; Foo] -> "/<string>/<int>"
+          [Foo; Bar] -> "/<int>/<string>" [Bar; Foo] -> "/<string>/<int>"
 
           The reason that you need to call a functor is complicated, but it's like
           syntactic sugar for: [{Typed_field.Packed.f = T Foo}; {f = T Bar}]
@@ -439,8 +447,7 @@ module Parser : sig
           [check_ok_and_print_urls_or_errors])
           - Only the fields that need things from path should be in [path_order].
           - All of the fields that need things from path must be in [path_order].
-          - No duplicates allowed.
-      *)
+          - No duplicates allowed. *)
       val path_order : Path_order(Typed_field).t
     end
 
@@ -486,12 +493,12 @@ module Parser : sig
             Parser.check_ok_and_print_urls_or_errors parser;
             [%expect
               {|
-    URL parser looks good!
-    ┌───────────────────────────────────────────────────┐
-    │ All urls                                          │
-    ├───────────────────────────────────────────────────┤
-    │ /?a.bar=<int>&a.foo=<int>&b.bar=<int>&b.foo=<int> │
-    └───────────────────────────────────────────────────┘ |}]
+          URL parser looks good!
+          ┌───────────────────────────────────────────────────┐
+          │ All urls                                          │
+          ├───────────────────────────────────────────────────┤
+          │ /?a.bar=<int>&a.foo=<int>&b.bar=<int>&b.foo=<int> │
+          └───────────────────────────────────────────────────┘ |}]
           ;;
 
           (*Doing this instead results in: *)
@@ -504,14 +511,14 @@ module Parser : sig
             Parser.check_ok_and_print_urls_or_errors parser;
             [%expect
               {|
-    URL parser looks good!
-    ┌───────────────────────────────────────────────────────────────┐
-    │ All urls                                                      │
-    ├───────────────────────────────────────────────────────────────┤
-    │ /?my_a.bar=<int>&my_a.foo=<int>&my_b.bar=<int>&my_b.foo=<int> │
-    └───────────────────────────────────────────────────────────────┘ |}]
-        ]}
-    *)
+          URL parser looks good!
+          ┌───────────────────────────────────────────────────────────────┐
+          │ All urls                                                      │
+          ├───────────────────────────────────────────────────────────────┤
+          │ /?my_a.bar=<int>&my_a.foo=<int>&my_b.bar=<int>&my_b.foo=<int> │
+          └───────────────────────────────────────────────────────────────┘ |}]
+          ;;
+        ]} *)
     val make
       :  ?namespace:string list
       -> (module S with type Typed_field.derived_on = 'a)
@@ -520,18 +527,33 @@ module Parser : sig
 
   val sexp_of_t : 'a t -> Sexp.t
 
-  (** [both a b] is a combinator for parsers of tuples. It will assume that path
-      parsers from [a] will happen before the path parsers of [b]. *)
+  (** [both a b] is a combinator for parsers of tuples. It will assume that path parsers
+      from [a] will happen before the path parsers of [b]. *)
   val both : ?namespace:string list -> 'a t -> 'b t -> ('a * 'b) t
 
-  (** [new_parser new_ ~previous ~f] will attempt to first parse with [new_], if
-      it fails, it'll fall back to [previous] and call [f] to convert from the previous 
-      type to the new type. *)
+  (** [new_parser new_ ~previous ~f] will attempt to first parse with [new_], if it fails,
+      it'll fall back to [previous] and call [f] to convert from the previous type to the
+      new type. *)
   val new_parser : 'new_ t -> previous:'prev t -> f:('prev -> 'new_) -> 'new_ t
 end
 
 module Versioned_parser : sig
   include Uri_parser_intf
+
+  (** "Evaluates" a ['a t] into a projection that parses to/from [Components.t] to
+      ['a Parse_result.t]. Default for [print_version_errors] is true. *)
+  val eval
+    :  ?encoding_behavior:Percent_encoding_behavior.t
+    -> ?print_version_errors:bool
+    -> 'a t
+    -> (Components.t, 'a Parse_result.t) Projection.t
+
+  (** Like [eval] but parses/unparses from/into a [Uri.t] *)
+  val eval_for_uri
+    :  ?encoding_behavior:Percent_encoding_behavior.t
+    -> ?print_version_errors:bool
+    -> 'a t
+    -> (Uri.t, 'a Parse_result.t) Projection.t
 
   (** Are you migrating your site to use [Url_var]'s [Typed] API and you don't want to
       break your existing links? Use [of_non_typed_parser] instead of [first_parser]. *)
@@ -542,11 +564,11 @@ module Versioned_parser : sig
 
   (** Need to change your URL? Use [new_parser] to "fallback" to [previous] if the new
       parser can't recognize a URL. If [previous] success and parses into [result], then
-      [f result] will be returned. Analogous to [cons] in a list. 
+      [f result] will be returned. Analogous to [cons] in a list.
 
       This function is like [Parser.new_parser], except it operates at the "top-level" of
-      your parser. Because it is known, guaranteed for this to be a top-level parser,
-      it has cheaper static checks and nicer expect test output than [Parser.new_parser],
+      your parser. Because it is known, guaranteed for this to be a top-level parser, it
+      has cheaper static checks and nicer expect test output than [Parser.new_parser],
       though it cannot express all the things that [Parser.new_parser] can, for example,
       you cannot use [Versioned_parser.new_parser] for a sub-parser of your URL type. *)
   val new_parser : 'new_ Parser.t -> previous:'prev t -> f:('prev -> 'new_) -> 'new_ t

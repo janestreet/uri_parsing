@@ -6,6 +6,7 @@ val diff_paths : string list -> string list -> unit
 
 val expect_output_and_identity_roundtrip
   :  ?expect_diff:(unit -> unit)
+  -> ?fragment:string
   -> path:string list
   -> query:string list Core.String.Map.t
   -> sexp_of_t:('a -> Sexp.t)

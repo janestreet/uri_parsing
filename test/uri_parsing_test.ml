@@ -92,6 +92,7 @@ module All_primitives_query = struct
     ; float_field : float
     ; string_field : string
     ; bool_field : bool
+    ; bool_flag_field : bool
     ; stringable_field : Name.t
     ; sexpable_field : Point.t
     ; binable_field : Serializable.t
@@ -106,6 +107,7 @@ module All_primitives_query = struct
     | Float_field -> from_query_required float
     | String_field -> from_query_required string
     | Bool_field -> from_query_required bool
+    | Bool_flag_field -> from_query_flag ()
     | Stringable_field -> stringable (module Name) |> from_query_required
     | Sexpable_field -> sexpable (module Point) |> from_query_required
     | Binable_field -> binable_via_base64 (module Serializable) |> from_query_required
@@ -173,7 +175,7 @@ end
 module Versioned_parser = struct
   include Versioned_parser
 
-  let original_eval_for_uri = eval_for_uri
+  let original_eval_for_uri = eval_for_uri ~print_version_errors:true
 
   let eval_for_uri ~equal parser =
     assert_is_equal_and_eval
@@ -194,6 +196,7 @@ let%expect_test "all primitives parser" =
       ; "float_field", [ "1.25" ]
       ; "string_field", [ "hi!" ]
       ; "bool_field", [ "true" ]
+      ; "bool_flag_field", []
       ; "stringable_field", [ "Bonsai" ]
       ; "sexpable_field", [ "((x 1) (y 2))" ]
       ; ( "binable_field"
@@ -212,8 +215,8 @@ let%expect_test "all primitives parser" =
   [%expect
     {|
     (query
-     ((binable_field (AQAAAAAAAABAATM)) (bool_field (true)) (float_field (1.25))
-      (int_field (10)) (sexpable_field ("((x 1) (y 2))"))
+     ((binable_field (AQAAAAAAAABAATM)) (bool_field (true)) (bool_flag_field ())
+      (float_field (1.25)) (int_field (10)) (sexpable_field ("((x 1) (y 2))"))
       (sexpable_via_base64_field (KChhIDEpKGIgMikoYyAzKSk)) (string_field (hi!))
       (stringable_field (Bonsai))))
     |}];
@@ -226,8 +229,8 @@ let%expect_test "all primitives parser" =
       [%expect
         {|
         ((int_field 10) (float_field 1.25) (string_field hi!) (bool_field true)
-         (stringable_field Bonsai) (sexpable_field ((x 1) (y 2)))
-         (binable_field ((a 1) (b 2) (c 3)))
+         (bool_flag_field true) (stringable_field Bonsai)
+         (sexpable_field ((x 1) (y 2))) (binable_field ((a 1) (b 2) (c 3)))
          (sexpable_via_base64_field ((a 1) (b 2) (c 3))))
         |}]);
   show_structure parser;
@@ -237,9 +240,9 @@ let%expect_test "all primitives parser" =
     ┌──────────────────────────────────────────────────────────────────────────────────────────┐
     │ All urls                                                                                 │
     ├──────────────────────────────────────────────────────────────────────────────────────────┤
-    │ /?binable_field=<base64<binable>>&bool_field=<bool>&float_field=<float>&int_field=<int>& │
-    │ sexpable_field=<sexpable>&sexpable_via_base64_field=<base64<sexpable>>&string_field=<str │
-    │ ing>&stringable_field=<string>                                                           │
+    │ /?[bool_flag_field]&binable_field=<base64<binable>>&bool_field=<bool>&float_field=<float │
+    │ >&int_field=<int>&sexpable_field=<sexpable>&sexpable_via_base64_field=<base64<sexpable>> │
+    │ &string_field=<string>&stringable_field=<string>                                         │
     └──────────────────────────────────────────────────────────────────────────────────────────┘
 
     (Record
@@ -247,6 +250,7 @@ let%expect_test "all primitives parser" =
       ((binable_field
         (From_query_required (value_parser (Base64_encoded Binable_via_base64))))
        (bool_field (From_query_required (value_parser Bool)))
+       (bool_flag_field (From_query_flag))
        (float_field (From_query_required (value_parser Float)))
        (int_field (From_query_required (value_parser Int)))
        (sexpable_field (From_query_required (value_parser Sexpable)))
@@ -317,7 +321,7 @@ let%expect_test "missing field exn" =
   (* field "bar" is missing. *)
   let query = String.Map.of_alist_exn [ "foo", [ "1" ] ] in
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path = [] });
+    projection.parse_exn { query; path = []; fragment = None });
   (* Error message shows the name of the missing field. *)
   [%expect {| ("Uri_parsing.Parser.Missing_key(\"bar\")") |}]
 ;;
@@ -327,7 +331,7 @@ let%expect_test "field fails to parse" =
   let projection = Parser.eval ~equal:[%equal: Simple_record.t] parser in
   let query = String.Map.of_alist_exn [ "foo", [ "1" ]; "bar", [ "not a float" ] ] in
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path = [] });
+    projection.parse_exn { query; path = []; fragment = None });
   [%expect
     {|
     ("Error while parsing record field:"
@@ -448,7 +452,7 @@ let%expect_test "many parser - single value fails => entire parse fails" =
   in
   (* Parsing query... *)
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path = [] });
+    projection.parse_exn { query; path = []; fragment = None });
   [%expect
     {|
     ("Error while parsing record field:"
@@ -521,7 +525,7 @@ let%expect_test "many1 parser - fails on empty list" =
   let query = String.Map.of_alist_exn [ "ints", []; "floats", [ "3.1"; "1.2"; "2.3" ] ] in
   (* Parsing query... *)
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path = [] });
+    projection.parse_exn { query; path = []; fragment = None });
   [%expect
     {|
     ("Error while parsing record field:"
@@ -665,7 +669,7 @@ let%expect_test "project parse_exn fails" =
   let query = String.Map.of_alist_exn [ "game_id", [ "10" ] ] in
   (* Parsing query... *)
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path = [] });
+    projection.parse_exn { query; path = []; fragment = None });
   [%expect
     {|
     ("Error while parsing record field:"
@@ -793,7 +797,7 @@ let%expect_test "default missing field fails if underlying parser fails." =
   (* fields "bar" and "baz" are missing; "foo" is present, but "foo" fails to parse. *)
   let query = String.Map.of_alist_exn [ "foo", [ "not an int!" ] ] in
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path = [] });
+    projection.parse_exn { query; path = []; fragment = None });
   [%expect
     {|
     ("Error while parsing record field:"
@@ -809,7 +813,7 @@ let%expect_test "field is present, but has no values" =
   (* fields "bar" and "baz" are missing; "foo" is present, but "foo" fails to parse. *)
   let query = String.Map.of_alist_exn [ "foo", [] ] in
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path = [] });
+    projection.parse_exn { query; path = []; fragment = None });
   [%expect
     {|
     ("Error while parsing record field:"
@@ -879,7 +883,7 @@ let%expect_test "fallback proper behavior" =
       ; "game_ids2", [ "1"; "2"; "3"; "hi"; "5"; "6" ]
       ]
   in
-  let result = projection.parse_exn { query; path = [] } in
+  let result = projection.parse_exn { query; path = []; fragment = None } in
   print_s (Query.sexp_of_t result.result);
   [%expect
     {|
@@ -937,7 +941,7 @@ let%expect_test "Fallback does not fix missing fields." =
       [ "foo", [ "1" ]; "baz", [ "1"; "hi!"; "3" ]; "qux", [ "1"; "hi!"; "3" ] ]
   in
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path = [] });
+    projection.parse_exn { query; path = []; fragment = None });
   [%expect {| ("Uri_parsing.Parser.Missing_key(\"bar\")") |}]
 ;;
 
@@ -964,7 +968,9 @@ let%expect_test "Both fallback and default may have different values" =
   let projection = Parser.eval ~equal:[%equal: Query.t] parser in
   let failing_query = String.Map.of_alist_exn [ "foo", [ "not an int" ] ] in
   let missing_query = String.Map.empty in
-  let result = projection.parse_exn { query = failing_query; path = [] } in
+  let result =
+    projection.parse_exn { query = failing_query; path = []; fragment = None }
+  in
   print_s (Query.sexp_of_t result.result);
   [%expect {| ((foo 200)) |}];
   let { Components.query = unparsed; _ } = projection.unparse result in
@@ -975,7 +981,9 @@ let%expect_test "Both fallback and default may have different values" =
     -|((foo ("not an int")))
     +|((foo (200)))
     |}];
-  let result = projection.parse_exn { query = missing_query; path = [] } in
+  let result =
+    projection.parse_exn { query = missing_query; path = []; fragment = None }
+  in
   print_s (Query.sexp_of_t result.result);
   [%expect {| ((foo 100)) |}];
   let { Components.query = unparsed; _ } = projection.unparse result in
@@ -1055,7 +1063,7 @@ let%expect_test "optional field" =
     String.Map.of_alist_exn
       [ "qux", [ "1"; "2"; "3" ]; "bam", [ "1"; "2"; "3" ]; "baz", [] ]
   in
-  let result = projection.parse_exn { query; path = [] } in
+  let result = projection.parse_exn { query; path = []; fragment = None } in
   print_s (Query.sexp_of_t result.result);
   [%expect {| ((foo ()) (bar ()) (baz ()) (qux ((1 2 3))) (bam ((1 2 3)))) |}];
   let { Components.query = unparsed; _ } = projection.unparse result in
@@ -1149,6 +1157,7 @@ module%test [@name "quickcheck"] _ = struct
           ; path_int : int
           ; path_bool_without_name : bool
           ; remaining_path : int list
+          ; from_fragment : int option
           } [@typed_fields]
       | Secondary of int
     [@@deriving typed_variants, sexp, equal, quickcheck]
@@ -1178,6 +1187,7 @@ module%test [@name "quickcheck"] _ = struct
         | Path_int -> with_prefix [ "path_int" ] (from_path int)
         | Path_bool_without_name -> with_prefix [] (from_path bool)
         | Remaining_path -> with_prefix [ "remaining" ] (from_remaining_path int)
+        | From_fragment -> from_fragment int
       ;;
 
       let path_generator =
@@ -1240,6 +1250,7 @@ module%test [@name "quickcheck"] _ = struct
         | Path_int -> None
         | Path_bool_without_name -> None
         | Remaining_path -> None
+        | From_fragment -> None
       ;;
 
       let string_list_equal = List.equal String.equal
@@ -1274,6 +1285,7 @@ module%test [@name "quickcheck"] _ = struct
         | Path_int -> None
         | Path_bool_without_name -> None
         | Remaining_path -> None
+        | From_fragment -> None
       ;;
     end
 
@@ -1291,10 +1303,10 @@ module%test [@name "quickcheck"] _ = struct
     fun (t : Query.t) ->
     let parser = Parser.Variant.make ~namespace:[] (module Query) in
     let projection = Parser.eval ~equal:[%equal: Query.t] parser in
-    let { Components.query = serialized; path } =
+    let { Components.query = serialized; path; fragment } =
       projection.unparse { Parse_result.result = t; remaining = Components.empty }
     in
-    let result = projection.parse_exn { query = serialized; path } in
+    let result = projection.parse_exn { query = serialized; path; fragment } in
     assert (Query.equal t result.result)
   ;;
 
@@ -1342,8 +1354,11 @@ module%test [@name "quickcheck"] _ = struct
       Generator.map Generator.int ~f:(fun index ->
         String.Map.empty, [ "secondary"; Int.to_string index ])
     in
-    Generator.bind Generator.bool ~f:(fun is_main ->
-      if is_main then main_query_and_path else secondary_generator)
+    let%map.Generator path, query =
+      Generator.bind Generator.bool ~f:(fun is_main ->
+        if is_main then main_query_and_path else secondary_generator)
+    and fragment = [%generator: int option] in
+    path, query, fragment
   ;;
 
   let maps_equal original unparsed =
@@ -1381,17 +1396,26 @@ module%test [@name "quickcheck"] _ = struct
   ;;
 
   let%quick_test "attempt to parse generated queries" =
-    fun ((query, path) :
-          (string list String.Map.t * string list
+    fun ((query, path, fragment) :
+          (string list String.Map.t * string list * int option
           [@generator generator] [@shrinker Shrinker.atomic])) ->
     let parser = Parser.Variant.make ~namespace:[] (module Query) in
     let projection = Parser.eval ~equal:[%equal: Query.t] parser in
-    let result = projection.parse_exn { query; path } in
-    let { Components.query = unparsed_query; path = unparsed_path } =
+    let result =
+      projection.parse_exn
+        { query; path; fragment = Option.map fragment ~f:Int.to_string }
+    in
+    let { Components.query = unparsed_query
+        ; path = unparsed_path
+        ; fragment = unparsed_fragment
+        }
+      =
       projection.unparse result
     in
     assert (maps_equal query unparsed_query);
-    assert (List.equal String.equal unparsed_path path)
+    assert (List.equal String.equal unparsed_path path);
+    assert (
+      [%equal: string option] (Option.map fragment ~f:Int.to_string) unparsed_fragment)
   ;;
 end
 
@@ -1490,10 +1514,12 @@ let%expect_test "url path queries" =
   let projection = Parser.eval ~equal:[%equal: Path_query.t] parser in
   let query = String.Map.empty in
   let path = [ "bar"; "1234"; "foo"; "hello" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Path_query.sexp_of_t result.result);
   [%expect {| ((foo hello) (bar 1234)) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   [%expect {| |}];
   show_structure parser;
@@ -1521,7 +1547,7 @@ let%expect_test "Path with url that does not match" =
   (* "/foo/" is missing! *)
   let path = [ "bar"; "1234" ] in
   Expect_test_helpers_core.require_does_raise (fun () ->
-    projection.parse_exn { query; path });
+    projection.parse_exn { query; path; fragment = None });
   [%expect
     {|
     ("Error while parsing record field:"
@@ -1547,10 +1573,12 @@ let%expect_test "slash escaping (legacy test)" =
   let projection = Parser.original_eval ~encoding_behavior:Legacy_incorrect parser in
   let query = String.Map.empty in
   let path = [ "bar"; "1234"; "foo"; "hi%2Fworld%2Fthese%2Fare%2Fslashes" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Path_query.sexp_of_t result.result);
   [%expect {| ((foo hi/world/these/are/slashes) (bar 1234)) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   show_structure parser;
   [%expect
@@ -1575,10 +1603,12 @@ let%expect_test "slash escaping (correct)" =
   let projection = Parser.original_eval ~encoding_behavior:Correct parser in
   let query = String.Map.empty in
   let path = [ "bar"; "1234"; "foo"; "hi%2Fworld%2Fthese%2Fare%2Fslashes" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Path_query.sexp_of_t result.result);
   [%expect {| ((foo hi%2Fworld%2Fthese%2Fare%2Fslashes) (bar 1234)) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   show_structure parser;
   [%expect
@@ -1625,10 +1655,12 @@ let%expect_test "path with different length prefixes" =
   let projection = Parser.eval ~equal:[%equal: Query.t] parser in
   let query = String.Map.empty in
   let path = [ "true"; "bar"; "100"; "foo"; "goes_here"; "hi" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Query.sexp_of_t result.result);
   [%expect {| ((foo hi) (bar 100) (baz true)) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   [%expect {| |}];
   show_structure parser;
@@ -1655,10 +1687,12 @@ let%expect_test "url path queries" =
   let projection = Parser.eval ~equal:[%equal: Path_query.t] parser in
   let query = String.Map.empty in
   let path = [ "bar"; "1234"; "foo"; "hello" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Path_query.sexp_of_t result.result);
   [%expect {| ((foo hello) (bar 1234)) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   [%expect {| |}];
   show_structure parser;
@@ -1705,10 +1739,12 @@ let%expect_test "position matters" =
   let query = String.Map.empty in
   (* Username is "comment_id" which is the same prefix used for the comment id. *)
   let path = [ "username"; "comment_id"; "comment_id"; "1234" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Query.sexp_of_t result.result);
   [%expect {| ((username comment_id) (comment_id 1234)) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   [%expect {| |}];
   show_structure parser;
@@ -1759,10 +1795,12 @@ let%expect_test "path with value parser project" =
   let projection = Parser.eval ~equal:[%equal: Query.t] parser in
   let query = String.Map.empty in
   let path = [ "bar"; "42"; "foo"; "hello" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Query.sexp_of_t result.result);
   [%expect {| ((foo hello) (bar 42)) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   [%expect {| |}];
   show_structure parser;
@@ -1815,10 +1853,12 @@ let%expect_test "path with field parser project" =
   let projection = Parser.eval ~equal:[%equal: Query.t] parser in
   let query = String.Map.empty in
   let path = [ "bar"; "42"; "foo"; "hello" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Query.sexp_of_t result.result);
   [%expect {| ((foo hello) (bar 42)) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   [%expect {| |}];
   show_structure parser;
@@ -1864,10 +1904,12 @@ let%expect_test "path and remaining path working together" =
   let projection = Parser.eval ~equal:[%equal: Query.t] parser in
   let query = String.Map.empty in
   let path = [ "foo"; "42"; "remaining"; "1"; "2"; "3"; "4" ] in
-  let result = projection.parse_exn { query; path } in
+  let result = projection.parse_exn { query; path; fragment = None } in
   print_s (Query.sexp_of_t result.result);
   [%expect {| ((foo 42) (bar (1 2 3 4))) |}];
-  let { Components.query = _; path = unparsed_path } = projection.unparse result in
+  let { Components.query = _; path = unparsed_path; fragment = _ } =
+    projection.unparse result
+  in
   diff_paths path unparsed_path;
   [%expect {| |}];
   show_structure parser;
@@ -3233,6 +3275,7 @@ let%expect_test "optional continues after failure" =
             ; "third.b", [ "0" ]
             ]
       ; path = [ "a"; "b"; "a"; "b"; "a"; "b"; "123" ]
+      ; fragment = None
       });
   [%expect
     {|
@@ -3492,8 +3535,7 @@ module%test [@name "query-based variant"] _ = struct
     print_endline (Uri.to_string original);
     [%expect {| |}];
     Expect_test_helpers_base.require_does_raise (fun () -> projection.parse_exn original);
-    [%expect
-      {| "Error while parsing url! Expected key \"page=<page>\" inside of the url's query." |}]
+    [%expect {| ("Uri_parsing.Parser.Missing_key(\"page\")") |}]
   ;;
 
   let%expect_test "duplicate query identifiers" =
@@ -3799,4 +3841,58 @@ let%expect_test "Catchall parser" =
     │ /foo/<int> │
     └────────────┘
     |}]
+;;
+
+let%expect_test "[optional_query_fields] works with [Query_based_variant]" =
+  let module T = struct
+    type t =
+      | Foo of int
+      | Bar
+    [@@deriving sexp_of, equal, typed_variants]
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Foo -> Parser.from_query_required Value_parser.int
+      | Bar -> Parser.unit
+    ;;
+
+    let identifier_for_variant = Typed_variant.name
+  end
+  in
+  let parser =
+    Parser.Query_based_variant.make (module T) ~key:"foobar"
+    |> Parser.optional_query_fields
+  in
+  show_structure parser;
+  [%expect
+    {|
+    URL parser looks good!
+    ┌────────────────────────┐
+    │ All urls               │
+    ├────────────────────────┤
+    │ /                      │
+    │ /?foo=<int>&foobar=foo │
+    │ /?foobar=bar           │
+    └────────────────────────┘
+
+    (Optional_query_fields
+     (t
+      (Query_based_variant
+       (constructor_declarations
+        ((bar Unit) (foo (From_query_required (value_parser Int)))))
+       (identifiers ((bar bar) (foo foo))) (override_namespace ()) (key foobar))))
+    |}];
+  let projection = Parser.eval_for_uri ~equal:[%equal: T.t option] parser in
+  let test uri =
+    projection.parse_exn (Uri.of_string uri)
+    |> [%sexp_of: T.t option Parse_result.t]
+    |> print_s
+  in
+  test "/?foobar=foo&foo=1";
+  [%expect {| ((result ((Foo 1))) (remaining ((path ()) (query ())))) |}];
+  test "/?foobar=bar";
+  [%expect {| ((result (Bar)) (remaining ((path ()) (query ())))) |}];
+  test "/";
+  [%expect {| ((result ()) (remaining ((path ()) (query ())))) |}];
+  test "/?foobar=foo";
+  [%expect {| ((result ()) (remaining ((path ()) (query ((foobar (foo))))))) |}]
 ;;
