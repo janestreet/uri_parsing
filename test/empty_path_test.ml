@@ -1,9 +1,9 @@
 open! Core
 open Uri_parsing
 
-(** These tests are designed to illustrate behavior when `/<string> paths
-    are provided an empty string, and how that might conflict with a
-    `/` path. We also test the analogous `/prefix` + `/prefix/<string>` cases. *)
+(** These tests are designed to illustrate behavior when `/<string> paths are provided an
+    empty string, and how that might conflict with a `/` path. We also test the analogous
+    `/prefix` + `/prefix/<string>` cases. *)
 
 module%test [@name "Homepage and param if both use `with_prefix`"] _ = struct
   module Url = struct
