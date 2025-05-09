@@ -1343,10 +1343,12 @@ module Parser = struct
                   Option.value_or_thunk
                     (Result_map.find results.result f)
                     ~default:(fun () ->
+                      let f = M.Typed_field.globalize0 f in
                       raise_s
                         [%message
                           "Internal Bug: Result for a record field was never parsed"
-                            ({ f = T f } : M.Typed_field.Packed.t)]))
+                            ({ f = T f } : M.Typed_field.Packed.t)])
+                  [@nontail])
             }
         in
         { Parse_result.result; remaining = results.remaining }
@@ -2764,7 +2766,9 @@ module Versioned_parser = struct
     | First_typed_parser parser -> Parser.eval ?encoding_behavior parser
     | New_parser { current_parser; map; previous_parser } ->
       let current_projection = Parser.eval ?encoding_behavior current_parser in
-      let previous_projection = eval ?encoding_behavior previous_parser in
+      let previous_projection =
+        eval ?encoding_behavior ~print_version_errors previous_parser
+      in
       let parse_exn (components : Components.t) =
         try current_projection.parse_exn components with
         | error ->
