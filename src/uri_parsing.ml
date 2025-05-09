@@ -398,14 +398,14 @@ module Parser = struct
     module type S = sig
       module Typed_field : Typed_fields_lib.S
 
-      val parser_for_field : 'a Typed_field.t -> 'a T.t
+      val parser_for_field : 'a Typed_field.t @ local -> 'a T.t
       val path_order : Path_order(Typed_field).t
     end
 
     module type Cached_s = sig
       module Typed_field : Typed_fields_lib.S
 
-      val parser_for_field : 'a Typed_field.t -> 'a T.t
+      val parser_for_field : 'a Typed_field.t @ local -> 'a T.t
       val path_order : Typed_field.Packed.t list
     end
 
@@ -417,14 +417,14 @@ module Parser = struct
     module type S = sig
       module Typed_field : Typed_fields_lib.S
 
-      val parser_for_field : 'a Typed_field.t -> 'a T.t
+      val parser_for_field : 'a Typed_field.t @ local -> 'a T.t
       val path_order : Path_order(Typed_field).t
     end
 
     module type Cached_s = sig
       module Typed_field : Typed_fields_lib.S
 
-      val parser_for_field : 'a Typed_field.t -> 'a T.t
+      val parser_for_field : 'a Typed_field.t @ local -> 'a T.t
       val path_order : Typed_field.Packed.t list
     end
 
@@ -442,7 +442,7 @@ module Parser = struct
       let module Cached = struct
         include M
 
-        let parser_for_field : type a. a Typed_field.t -> a T.t =
+        let parser_for_field : type a. a Typed_field.t @ local -> a T.t =
           fun f -> Parser_map.find parser_by_field f
         ;;
 
@@ -457,13 +457,13 @@ module Parser = struct
     module type S = sig
       module Typed_variant : Typed_variants_lib.S
 
-      val parser_for_variant : 'a Typed_variant.t -> 'a T.t
+      val parser_for_variant : 'a Typed_variant.t @ local -> 'a T.t
     end
 
     module type Cached_s = sig
       include S
 
-      val pattern_for_variant : 'a Typed_variant.t -> Path_pattern.t
+      val pattern_for_variant : 'a Typed_variant.t @ local -> Path_pattern.t
     end
 
     val make
@@ -484,13 +484,13 @@ module Parser = struct
     module type S = sig
       module Typed_variant : Typed_variants_lib.S
 
-      val parser_for_variant : 'a Typed_variant.t -> 'a T.t
+      val parser_for_variant : 'a Typed_variant.t @ local -> 'a T.t
     end
 
     module type Cached_s = sig
       include S
 
-      val pattern_for_variant : 'a Typed_variant.t -> Path_pattern.t
+      val pattern_for_variant : 'a Typed_variant.t @ local -> Path_pattern.t
     end
 
     module Match_pattern = struct
@@ -601,7 +601,7 @@ module Parser = struct
       let module Cached = struct
         include M
 
-        let parser_for_variant : type a. a Typed_variant.t -> a T.t =
+        let parser_for_variant : type a. a Typed_variant.t @ local -> a T.t =
           fun f ->
           let out = Parser_map.find parser_by_variant f in
           match Tuple2.get2 (pattern_for_variant f) with
@@ -617,7 +617,7 @@ module Parser = struct
               }
         ;;
 
-        let pattern_for_variant : type a. a Typed_variant.t -> Path_pattern.t =
+        let pattern_for_variant : type a. a Typed_variant.t @ local -> Path_pattern.t =
           fun v ->
           let pattern, _ = pattern_for_variant v in
           pattern
@@ -632,8 +632,8 @@ module Parser = struct
     module type S = sig
       module Typed_variant : Typed_variants_lib.S
 
-      val parser_for_variant : 'a Typed_variant.t -> 'a T.t
-      val identifier_for_variant : 'a Typed_variant.t -> string
+      val parser_for_variant : 'a Typed_variant.t @ local -> 'a T.t
+      val identifier_for_variant : 'a Typed_variant.t @ local -> string
     end
 
     val make
@@ -645,8 +645,8 @@ module Parser = struct
     module type S = sig
       module Typed_variant : Typed_variants_lib.S
 
-      val parser_for_variant : 'a Typed_variant.t -> 'a T.t
-      val identifier_for_variant : 'a Typed_variant.t -> string
+      val parser_for_variant : 'a Typed_variant.t @ local -> 'a T.t
+      val identifier_for_variant : 'a Typed_variant.t @ local -> string
     end
 
     let make
@@ -1343,10 +1343,12 @@ module Parser = struct
                   Option.value_or_thunk
                     (Result_map.find results.result f)
                     ~default:(fun () ->
+                      let f = M.Typed_field.globalize0 f in
                       raise_s
                         [%message
                           "Internal Bug: Result for a record field was never parsed"
-                            ({ f = T f } : M.Typed_field.Packed.t)]))
+                            ({ f = T f } : M.Typed_field.Packed.t)])
+                  [@nontail])
             }
         in
         { Parse_result.result; remaining = results.remaining }
@@ -2764,7 +2766,9 @@ module Versioned_parser = struct
     | First_typed_parser parser -> Parser.eval ?encoding_behavior parser
     | New_parser { current_parser; map; previous_parser } ->
       let current_projection = Parser.eval ?encoding_behavior current_parser in
-      let previous_projection = eval ?encoding_behavior previous_parser in
+      let previous_projection =
+        eval ?encoding_behavior ~print_version_errors previous_parser
+      in
       let parse_exn (components : Components.t) =
         try current_projection.parse_exn components with
         | error ->

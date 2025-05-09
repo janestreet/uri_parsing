@@ -307,7 +307,7 @@ module Parser : sig
           3. If two constructors, both match, the one with most specificity is used (i.e
              longest match first and if tie, then from_remaining_path wins over
              with_prefix). Furthermore, if there is a "tie", then this is a static error. *)
-      val parser_for_variant : 'a Typed_variant.t -> 'a t
+      val parser_for_variant : 'a Typed_variant.t @ local -> 'a t
     end
 
     (** Makes a parser for 'a where 'a is a Variant.
@@ -360,7 +360,7 @@ module Parser : sig
 
       (** The identifier that each identifier has. Each identifier _must_ be unique
           amongst each other within the scope of this function. *)
-      val identifier_for_variant : 'a Typed_variant.t -> string
+      val identifier_for_variant : 'a Typed_variant.t @ local -> string
     end
 
     (** Makes a parser for 'a where 'a is a Variant.
@@ -400,7 +400,7 @@ module Parser : sig
 
             let my_parser = Record.make (module My_url)
           ]} *)
-      val parser_for_field : 'a Typed_field.t -> 'a t
+      val parser_for_field : 'a Typed_field.t @ local -> 'a t
 
       (** Path order is one of the more uglier, verbose parts of the API, but it solves a
           problem that's hard to solve otherwise: Which order to parse record fields?
