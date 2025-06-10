@@ -437,8 +437,9 @@ let%expect_test "from_query_many can parse empty list options from missing query
     ~path:[]
     ~query:String.Map.empty
     ~sexp_of_t:Url.sexp_of_t
-    ~expect:(fun () -> (* Some []*)
-                       [%expect {| ((strings (()))) |}])
+    ~expect:(fun () ->
+      (* Some []*)
+      [%expect {| ((strings (()))) |}])
 ;;
 
 let%expect_test "many parser - single value fails => entire parse fails" =
