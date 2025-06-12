@@ -17,7 +17,7 @@ depends: [
   "textutils"
   "base64"           {>= "3.4.0"}
   "dune"             {>= "3.17.0"}
-  "js_of_ocaml-ppx"  {= "6.0.1+jst"}
+  "js_of_ocaml-ppx"  {= "6.0.1+ox"}
   "re"               {>= "1.8.0"}
   "uri"              {>= "3.0.0"}
 ]
