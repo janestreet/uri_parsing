@@ -437,8 +437,9 @@ let%expect_test "from_query_many can parse empty list options from missing query
     ~path:[]
     ~query:String.Map.empty
     ~sexp_of_t:Url.sexp_of_t
-    ~expect:(fun () -> (* Some []*)
-                       [%expect {| ((strings (()))) |}])
+    ~expect:(fun () ->
+      (* Some []*)
+      [%expect {| ((strings (()))) |}])
 ;;
 
 let%expect_test "many parser - single value fails => entire parse fails" =
@@ -478,7 +479,7 @@ let%expect_test "many parser - works on empty list" =
     ~expect:(fun () -> [%expect {| ((ints ()) (floats (3.1 1.2 2.3))) |}]);
   [%expect
     {|
-    -1,1 +1,1
+    === DIFF HUNK ===
     -|((floats (3.1 1.2 2.3)) (ints ()))
     +|((floats (3.1 1.2 2.3)))
     |}];
@@ -894,7 +895,7 @@ let%expect_test "fallback proper behavior" =
   diff_queries query unparsed;
   [%expect
     {|
-    -1,6 +1,6
+    === DIFF HUNK ===
     -|((bar     ("not an int!"))
     +|((bar     (123))
        (foo     (1))
@@ -977,7 +978,7 @@ let%expect_test "Both fallback and default may have different values" =
   diff_queries failing_query unparsed;
   [%expect
     {|
-    -1,1 +1,1
+    === DIFF HUNK ===
     -|((foo ("not an int")))
     +|((foo (200)))
     |}];
@@ -1070,7 +1071,7 @@ let%expect_test "optional field" =
   diff_queries query unparsed;
   [%expect
     {|
-    -1,1 +1,2
+    === DIFF HUNK ===
     -|((bam (1 2 3)) (baz ()) (qux (1 2 3)))
     +|((bam (1 2 3))
     +| (qux (1 2 3)))

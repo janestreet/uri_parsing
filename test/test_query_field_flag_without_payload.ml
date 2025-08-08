@@ -68,7 +68,7 @@ module%test Testing_a_record = struct
     (* The previous URL format is auto-converted to the "payload-less" format. *)
     [%expect
       {|
-      -1,2 +1,1
+      === DIFF HUNK ===
       -|((a         (true))
       -| (overriden (false)))
       +|((a ()))

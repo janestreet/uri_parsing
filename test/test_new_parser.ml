@@ -35,7 +35,7 @@ let%expect_test "Basic use of [Parser.new_parser]" =
     ~expect:(fun () -> [%expect {| 5 |}]);
   [%expect
     {|
-    -1,1 +1,1
+    === DIFF HUNK ===
     -|((b (hi!!!)))
     +|((a (5)))
     |}];
@@ -47,7 +47,7 @@ let%expect_test "Basic use of [Parser.new_parser]" =
     ~expect:(fun () -> [%expect {| 5 |}]);
   [%expect
     {|
-    -1,2 +1,1
+    === DIFF HUNK ===
     -|((a ("I am not an int!"))
     -| (b (hi!!!)))
     +|((a (5)))
@@ -111,7 +111,7 @@ let%expect_test "[Parser.new_parser] duplicate keys - OK" =
     ~expect:(fun () -> [%expect {| 10 |}]);
   [%expect
     {|
-    -1,1 +1,1
+    === DIFF HUNK ===
     -|((a ("not an int")))
     +|((a (10)))
     |}]
@@ -269,7 +269,7 @@ let%expect_test "[Parser.new_parser] four-nested-in-a-row" =
     ~expect:(fun () -> [%expect {| 1 |}]);
   [%expect
     {|
-    -1,1 +1,1
+    === DIFF HUNK ===
     -|((a (true)))
     +|((a (1)))
     |}];
@@ -281,7 +281,7 @@ let%expect_test "[Parser.new_parser] four-nested-in-a-row" =
     ~expect:(fun () -> [%expect {| 0 |}]);
   [%expect
     {|
-    -1,1 +1,1
+    === DIFF HUNK ===
     -|((a (false)))
     +|((a (0)))
     |}]

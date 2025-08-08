@@ -104,7 +104,7 @@ module%test [@name "Homepage and param"] _ = struct
       ([%sexp_of: Url.t] reparsed);
     [%expect
       {|
-      -1,1 +1,1
+      === DIFF HUNK ===
       -|(Param "")
       +|Homepage
       |}]
@@ -334,7 +334,7 @@ module%test [@name "Prefixed Only Homepage"] _ = struct
       ([%sexp_of: Uri_jane.t] unparsed);
     [%expect
       {|
-      -1,1 +1,1
+      === DIFF HUNK ===
       -|prefix/
       +|prefix
       |}]
