@@ -235,12 +235,15 @@ module Parser : sig
     -> 'a t
 
   (** Like [from_query_required], but will parse into a list of values rather than just
-      one. (e.g. ?foo=1,2,3,4 => [1; 2; 3; 4]) with
+      one. (e.g. [?foo=1,2,3,4 => [1; 2; 3; 4]]) with
       [from_query_many ~key:"foo" Value_parser.int]
 
       [from_query_many ~key:"q" Value_parser.int] parses into:
 
-      "?q=1,2,3" => [1; 2; 3] "?q=1" => [1] "?q" => [] "?" => [] *)
+      - "?q=1,2,3" => [[1; 2; 3]]
+      - "?q=1" => [[1]]
+      - "?q" => [[]]
+      - "?" => [[]] *)
   val from_query_many : ?key:string -> 'a Value_parser.t -> 'a list t
 
   (** Like [from_query_many], but fails if there is not a single element in the list. *)
