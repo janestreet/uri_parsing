@@ -163,9 +163,9 @@ module Parser = struct
 
   let original_eval_for_uri = eval_for_uri
 
-  let eval_for_uri ~equal parser =
+  let eval_for_uri ~equal ~trailing_slash_behavior parser =
     assert_is_equal_and_eval
-      ~old_eval:original_eval_for_uri
+      ~old_eval:(original_eval_for_uri ~trailing_slash_behavior)
       ~equal_from:Uri.equal
       ~equal
       parser
@@ -177,9 +177,9 @@ module Versioned_parser = struct
 
   let original_eval_for_uri = eval_for_uri ~print_version_errors:true
 
-  let eval_for_uri ~equal parser =
+  let eval_for_uri ~equal ~trailing_slash_behavior parser =
     assert_is_equal_and_eval
-      ~old_eval:original_eval_for_uri
+      ~old_eval:(original_eval_for_uri ~trailing_slash_behavior)
       ~equal_from:Uri.equal
       ~equal
       parser
@@ -3334,7 +3334,12 @@ let%expect_test "uri projection" =
     │ /<int>?b=<int>&c=<int> │
     └────────────────────────┘
     |}];
-  let projection = Parser.eval_for_uri ~equal:[%equal: Url.t] parser in
+  let projection =
+    Parser.eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
+      ~equal:[%equal: Url.t]
+      parser
+  in
   let result = projection.parse_exn (Uri.of_string "/23?b=1&c=2") in
   print_s [%message (result.result : Url.t)];
   [%expect {| (result.result ((a 23) (b 1) (c 2))) |}];
@@ -3474,7 +3479,10 @@ module%test [@name "query-based variant"] _ = struct
   let versioned_parser = Versioned_parser.first_parser parser
 
   let projection =
-    Versioned_parser.eval_for_uri ~equal:[%equal: Well_behaved_url.t] versioned_parser
+    Versioned_parser.eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
+      ~equal:[%equal: Well_behaved_url.t]
+      versioned_parser
   ;;
 
   let%expect_test "check ok" =
@@ -3682,10 +3690,14 @@ let%expect_test "path parsing encode decode" =
     └───────────┘
     |}];
   let projection =
-    Versioned_parser.original_eval_for_uri ~encoding_behavior:Correct versioned_parser
+    Versioned_parser.original_eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
+      ~encoding_behavior:Correct
+      versioned_parser
   in
   let incorrect_projection =
     Versioned_parser.original_eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
       ~encoding_behavior:Legacy_incorrect
       versioned_parser
   in
@@ -3718,7 +3730,10 @@ let%expect_test "query parsing encode decode" =
     └──────────────┘
     |}];
   let projection =
-    Versioned_parser.original_eval_for_uri ~encoding_behavior:Correct versioned_parser
+    Versioned_parser.original_eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
+      ~encoding_behavior:Correct
+      versioned_parser
   in
   let original = Uri.make ~query:[ "q", [ "beep boop" ] ] () in
   print_endline (Uri.to_string original);
@@ -3745,10 +3760,14 @@ let%expect_test "double path parsing encode decode" =
     └───────────┘
     |}];
   let projection =
-    Versioned_parser.original_eval_for_uri ~encoding_behavior:Correct versioned_parser
+    Versioned_parser.original_eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
+      ~encoding_behavior:Correct
+      versioned_parser
   in
   let incorrect_projection =
     Versioned_parser.original_eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
       ~encoding_behavior:Legacy_incorrect
       versioned_parser
   in
@@ -3785,7 +3804,10 @@ let%expect_test "double query parsing encode decode" =
     └──────────────┘
     |}];
   let projection =
-    Versioned_parser.original_eval_for_uri ~encoding_behavior:Correct versioned_parser
+    Versioned_parser.original_eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
+      ~encoding_behavior:Correct
+      versioned_parser
   in
   (* [Uri.pct_decode "beep%2520boop"] = "beep%20boop" *)
   let original = Uri.make ~query:[ "q", [ "beep%20boop" ] ] () in
@@ -3882,7 +3904,12 @@ let%expect_test "[optional_query_fields] works with [Query_based_variant]" =
         ((bar Unit) (foo (From_query_required (value_parser Int)))))
        (identifiers ((bar bar) (foo foo))) (override_namespace ()) (key foobar))))
     |}];
-  let projection = Parser.eval_for_uri ~equal:[%equal: T.t option] parser in
+  let projection =
+    Parser.eval_for_uri
+      ~trailing_slash_behavior:Keep_trailing_slashes
+      ~equal:[%equal: T.t option]
+      parser
+  in
   let test uri =
     projection.parse_exn (Uri.of_string uri)
     |> [%sexp_of: T.t option Parse_result.t]

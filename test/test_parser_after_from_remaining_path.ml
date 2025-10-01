@@ -40,7 +40,10 @@ module%test [@name "path parser after remaining_path"] _ = struct
 
   let%expect_test "path parser after from remaining path parser passes the check." =
     let projection =
-      Versioned_parser.eval_for_uri ~encoding_behavior:Correct unparseable_parser
+      Versioned_parser.eval_for_uri
+        ~trailing_slash_behavior:Keep_trailing_slashes
+        ~encoding_behavior:Correct
+        unparseable_parser
     in
     let original = Uri.make ~path:"a/b/c/d/e" () in
     print_endline (Uri.to_string original);
@@ -97,7 +100,10 @@ module%test [@name "path parser after end_of_path"] _ = struct
 
   let%expect_test "path parser after from remaining path parser passes the check." =
     let projection =
-      Versioned_parser.eval_for_uri ~encoding_behavior:Correct unparseable_parser
+      Versioned_parser.eval_for_uri
+        ~trailing_slash_behavior:Keep_trailing_slashes
+        ~encoding_behavior:Correct
+        unparseable_parser
     in
     let original = Uri.make ~path:"e" () in
     print_endline (Uri.to_string original);
@@ -155,7 +161,10 @@ module%test [@name "path parser after with_remaining_path"] _ = struct
 
   let%expect_test "path parser after from remaining path parser passes the check." =
     let projection =
-      Versioned_parser.eval_for_uri ~encoding_behavior:Correct unparseable_parser
+      Versioned_parser.eval_for_uri
+        ~trailing_slash_behavior:Keep_trailing_slashes
+        ~encoding_behavior:Correct
+        unparseable_parser
     in
     let original = Uri.make ~path:"capybara/foo" () in
     print_endline (Uri.to_string original);

@@ -52,43 +52,6 @@ module Value_parser : sig
   val name : string -> 'a t -> 'a t
 end
 
-(** Represents parts of a URL.
-
-    Each kind of parser consumes from this "pool" of parts of a url.
-
-    Parsers that consume from the query will lookup the query map, parse, and consume the
-    element from the query.
-
-    Parsers that consume from the path will read the path in sequential order, from the
-    beginning of the path to the end of the path. Once a path parser, is done parsing, it
-    will remove its consumed elements from the path, and the next path parser will
-    continue where it left off. *)
-module Components : sig
-  type t =
-    { path : string list (** "foo/bar" -> ["foo"; "bar"] *)
-    ; query : string list String.Map.t
-    (** "?foo=1&bar=2" -> String.Map.of_alist_exn ["foo", ["1"]; "bar", ["2"]] *)
-    ; fragment : string option
-    }
-  [@@deriving sexp, equal]
-
-  val encode_path : string list -> string
-  val decode_path : string -> string list
-  val empty : t
-end
-
-module Parse_result : sig
-  (** [result] is the result of the parsing operation. [remaining] is whatever components
-      were left unparsed after parsing was completed. *)
-  type 'a t =
-    { result : 'a
-    ; remaining : Components.t
-    }
-  [@@deriving sexp_of]
-
-  val create : 'a -> 'a t
-end
-
 module Percent_encoding_behavior : sig
   (** TLDR: New apps should always choose [Correct].
 
@@ -126,6 +89,54 @@ module Percent_encoding_behavior : sig
   type t =
     | Legacy_incorrect
     | Correct
+end
+
+module Trailing_slash_behavior : sig
+  type t =
+    | Keep_trailing_slashes
+    | Drop_trailing_slashes
+end
+
+(** Represents parts of a URL.
+
+    Each kind of parser consumes from this "pool" of parts of a url.
+
+    Parsers that consume from the query will lookup the query map, parse, and consume the
+    element from the query.
+
+    Parsers that consume from the path will read the path in sequential order, from the
+    beginning of the path to the end of the path. Once a path parser, is done parsing, it
+    will remove its consumed elements from the path, and the next path parser will
+    continue where it left off. *)
+module Components : sig
+  type t =
+    { path : string list (** "foo/bar" -> ["foo"; "bar"] *)
+    ; query : string list String.Map.t
+    (** "?foo=1&bar=2" -> String.Map.of_alist_exn ["foo", ["1"]; "bar", ["2"]] *)
+    ; fragment : string option
+    }
+  [@@deriving sexp, equal]
+
+  val encode_path : string list -> string
+
+  val decode_path
+    :  ?trailing_slash_behavior:Trailing_slash_behavior.t
+    -> string
+    -> string list
+
+  val empty : t
+end
+
+module Parse_result : sig
+  (** [result] is the result of the parsing operation. [remaining] is whatever components
+      were left unparsed after parsing was completed. *)
+  type 'a t =
+    { result : 'a
+    ; remaining : Components.t
+    }
+  [@@deriving sexp_of]
+
+  val create : 'a -> 'a t
 end
 
 module type Uri_parser_intf = sig
@@ -171,6 +182,7 @@ module Parser : sig
   (** Like [eval] but parses/unparses from/into a [Uri.t] *)
   val eval_for_uri
     :  ?encoding_behavior:Percent_encoding_behavior.t
+    -> ?trailing_slash_behavior:Trailing_slash_behavior.t
     -> 'a t
     -> (Uri.t, 'a Parse_result.t) Projection.t
 
@@ -554,6 +566,7 @@ module Versioned_parser : sig
   (** Like [eval] but parses/unparses from/into a [Uri.t] *)
   val eval_for_uri
     :  ?encoding_behavior:Percent_encoding_behavior.t
+    -> ?trailing_slash_behavior:Trailing_slash_behavior.t
     -> ?print_version_errors:bool
     -> 'a t
     -> (Uri.t, 'a Parse_result.t) Projection.t
