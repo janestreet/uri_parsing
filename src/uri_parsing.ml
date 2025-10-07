@@ -14,6 +14,12 @@ module Percent_encoding_behavior = struct
     | Correct
 end
 
+module Trailing_slash_behavior = struct
+  type t =
+    | Keep_trailing_slashes
+    | Drop_trailing_slashes
+end
+
 module Path_pattern = struct
   type t =
     { pattern : [ `Ignore | `Match of string ] list
@@ -250,8 +256,17 @@ module Components = struct
     | p -> String.split ~on:'/' p
   ;;
 
-  let decode_path path =
+  let decode_path
+    ?(trailing_slash_behavior = Trailing_slash_behavior.Drop_trailing_slashes)
+    path
+    =
+    let maybe_drop_trailing_slashes path =
+      match trailing_slash_behavior with
+      | Keep_trailing_slashes -> path
+      | Drop_trailing_slashes -> String.rstrip ~drop:(Char.equal '/') path
+    in
     String.chop_prefix_if_exists ~prefix:"/" path
+    |> maybe_drop_trailing_slashes
     |> split_if_nonempty
     |> List.map ~f:Uri.pct_decode
   ;;
@@ -271,12 +286,16 @@ module Components = struct
     |> Fn.flip Uri.with_fragment fragment
   ;;
 
-  let of_uri ?(encoding_behavior = Percent_encoding_behavior.Correct) uri =
+  let of_uri
+    ?(encoding_behavior = Percent_encoding_behavior.Correct)
+    ?(trailing_slash_behavior = Trailing_slash_behavior.Drop_trailing_slashes)
+    uri
+    =
     let path =
       match encoding_behavior with
       | Percent_encoding_behavior.Legacy_incorrect ->
         Uri.path uri |> String.chop_prefix_if_exists ~prefix:"/" |> split_if_nonempty
-      | Correct -> decode_path (Uri.path uri)
+      | Correct -> decode_path (Uri.path uri) ~trailing_slash_behavior
     in
     let query =
       uri
@@ -1970,11 +1989,13 @@ module Parser = struct
     { Projection.parse_exn; unparse }
   ;;
 
-  let eval_for_uri ?encoding_behavior (t : 'a t) : (Uri.t, 'a Parse_result.t) Projection.t
+  let eval_for_uri ?encoding_behavior ?trailing_slash_behavior (t : 'a t)
+    : (Uri.t, 'a Parse_result.t) Projection.t
     =
     let projection = eval ?encoding_behavior t in
     let parse_exn (uri : Uri.t) =
-      projection.parse_exn (Components.of_uri ?encoding_behavior uri)
+      projection.parse_exn
+        (Components.of_uri ?encoding_behavior ?trailing_slash_behavior uri)
     in
     let unparse (result : 'a Parse_result.t) =
       Components.to_uri ?encoding_behavior (projection.unparse result)
@@ -2685,7 +2706,12 @@ module Parser = struct
   ;;
 
   let to_string (t : 'a t) : ('a -> string) Staged.t =
-    let projection = eval_for_uri ~encoding_behavior:Correct t in
+    let projection =
+      eval_for_uri
+        ~encoding_behavior:Correct
+        ~trailing_slash_behavior:Keep_trailing_slashes
+        t
+    in
     let to_string a =
       let parsed = projection.unparse (Parse_result.create a) in
       "/" ^ Uri.to_string parsed
@@ -2786,12 +2812,17 @@ module Versioned_parser = struct
       { Projection.parse_exn; unparse }
   ;;
 
-  let eval_for_uri ?encoding_behavior ?print_version_errors (t : 'a t)
+  let eval_for_uri
+    ?encoding_behavior
+    ?trailing_slash_behavior
+    ?print_version_errors
+    (t : 'a t)
     : (Uri.t, 'a Parse_result.t) Projection.t
     =
     let projection = eval ?encoding_behavior ?print_version_errors t in
     let parse_exn (uri : Uri.t) =
-      projection.parse_exn (Components.of_uri ?encoding_behavior uri)
+      projection.parse_exn
+        (Components.of_uri ?encoding_behavior ?trailing_slash_behavior uri)
     in
     let unparse (result : 'a Parse_result.t) =
       Components.to_uri ?encoding_behavior (projection.unparse result)
@@ -2800,7 +2831,12 @@ module Versioned_parser = struct
   ;;
 
   let to_string (t : 'a t) : ('a -> string) Staged.t =
-    let projection = eval_for_uri ~encoding_behavior:Correct t in
+    let projection =
+      eval_for_uri
+        ~encoding_behavior:Correct
+        ~trailing_slash_behavior:Keep_trailing_slashes
+        t
+    in
     let to_string a =
       let parsed = projection.unparse (Parse_result.create a) in
       "/" ^ Uri.to_string parsed
