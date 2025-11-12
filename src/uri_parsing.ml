@@ -531,17 +531,22 @@ module Parser = struct
                option
         =
         fun ~prefix t ->
+        let does_not_read_from_path = Some (prefix, `Continue) in
         match t with
-        | Unit -> None
+        | Unit -> does_not_read_from_path
         | Project { input; _ } -> next_declared_path_pattern ~prefix input
-        | From_query_required _ -> None
-        | From_query_optional _ -> None
-        | From_query_flag _ -> None
-        | From_query_optional_with_default _ -> None
-        | From_fragment _ -> None
-        | From_query_many _ -> None
+        | From_query_required _ -> does_not_read_from_path
+        | From_query_optional _ -> does_not_read_from_path
+        | From_query_flag _ -> does_not_read_from_path
+        | From_query_optional_with_default _ -> does_not_read_from_path
+        | From_fragment _ -> does_not_read_from_path
+        | From_query_many _ -> does_not_read_from_path
         | From_path _ -> Some (prefix @ [ `Ignore ], `Continue)
-        | From_remaining_path _ -> Some (prefix, `Continue)
+        | From_remaining_path _ -> None
+        | With_prefix { prefix = []; t } ->
+          (match next_declared_path_pattern ~prefix t with
+           | Some (_, (`Stop_prefix | `Stop_remaining_path)) as new_ -> new_
+           | Some (_, `Continue) | None -> Some ([], `Stop_prefix))
         | With_prefix { prefix = inner_prefix; _ } ->
           Some (prefix @ List.map inner_prefix ~f:(fun x -> `Match x), `Stop_prefix)
         | With_remaining_path { needed_path; _ } ->
@@ -550,12 +555,14 @@ module Parser = struct
           let module M =
             (val record_module : Record.Cached_s with type Typed_field.derived_on = a)
           in
-          List.fold M.path_order ~init:None ~f:(fun acc { f = T f } ->
-            match acc with
-            | Some (_, `Stop_prefix) | Some (_, `Stop_remaining_path) -> acc
-            | None -> next_declared_path_pattern ~prefix (M.parser_for_field f)
-            | Some (prefix, `Continue) ->
-              next_declared_path_pattern ~prefix (M.parser_for_field f))
+          List.fold
+            M.path_order
+            ~init:(Some (prefix, `Continue))
+            ~f:(fun acc { f = T f } ->
+              match acc with
+              | Some (_, (`Stop_prefix | `Stop_remaining_path)) | None -> acc
+              | Some (prefix, `Continue) ->
+                next_declared_path_pattern ~prefix (M.parser_for_field f))
         | Variant _ -> None
         | Query_based_variant _ -> None
         | Optional_query_fields { t } -> next_declared_path_pattern ~prefix t
@@ -570,7 +577,12 @@ module Parser = struct
             [@@deriving sexp_of, equal]
           end
           in
-          (match [%equal: T.t] new_next_path prev_next_path with
+          let equivalent a b =
+            match a, b with
+            | (Some (_, `Continue) | None), (Some (_, `Continue) | None) -> true
+            | _, _ -> [%equal: T.t] a b
+          in
+          (match equivalent new_next_path prev_next_path with
            | true -> ()
            | false ->
              (* NOTE: This is also checked statically. This warning should only be printed

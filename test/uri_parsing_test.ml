@@ -3155,6 +3155,283 @@ let%expect_test "Weird lookahead urls" =
     ~expect:(fun () -> [%expect {| (Bar (c 12) (d 132)) |}])
 ;;
 
+let%expect_test "Lookahead urls with extra Path_order entries" =
+  let module Url = struct
+    type t =
+      | Foo of { a : int } [@typed_fields]
+      | Bar of
+          { b : int
+          ; c : int
+          ; d : int
+          } [@typed_fields]
+    [@@deriving typed_variants, sexp, equal]
+
+    module Anon_for_foo = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_foo
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | A -> Parser.from_path Value_parser.int
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ A ]
+    end
+
+    module Anon_for_bar = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_bar
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | B -> Parser.from_path Value_parser.int
+        | C -> Parser.from_query_required Value_parser.int
+        | D -> Parser.with_prefix [ "d" ] (Parser.from_path Value_parser.int)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ B; C; D ]
+    end
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Foo -> Parser.with_prefix [] (Parser.Record.make (module Anon_for_foo))
+      | Bar -> Parser.Record.make (module Anon_for_bar)
+    ;;
+  end
+  in
+  let parser = Parser.Variant.make (module Url) in
+  show_structure parser;
+  [%expect
+    {|
+    URL parser looks good!
+    ┌────────────────────────────┐
+    │ All urls                   │
+    ├────────────────────────────┤
+    │ /<int>                     │
+    │ /<int>/d/<int>?bar.c=<int> │
+    └────────────────────────────┘
+
+    (Variant
+     (constructor_declarations
+      ((bar
+        (Record
+         (label_declarations
+          ((b (From_path Int)) (c (From_query_required (value_parser Int)))
+           (d (With_prefix (prefix (d)) (t (From_path Int))))))
+         (path_order (b c d))))
+       (foo
+        (With_prefix (prefix ())
+         (t (Record (label_declarations ((a (From_path Int)))) (path_order (a))))))))
+     (patterns
+      ((bar ((pattern (Ignore (Match d))) (needed_match Prefix)))
+       (foo ((pattern ()) (needed_match Prefix)))))
+     (override_namespace ()))
+    |}];
+  let projection = Parser.eval ~equal:[%equal: Url.t] parser in
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "12" ]
+    ~query:String.Map.empty
+    ~sexp_of_t:Url.sexp_of_t
+    ~expect:(fun () -> [%expect {| (Foo (a 12)) |}]);
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "12"; "d"; "132" ]
+    ~query:(String.Map.singleton "bar.c" [ "14" ])
+    ~sexp_of_t:Url.sexp_of_t
+    ~expect:(fun () -> [%expect {| (Bar (b 12) (c 14) (d 132)) |}])
+;;
+
+let%expect_test "Urls that would be lookaheads if not for a variant in the middle" =
+  let module Url = struct
+    module Variant = struct
+      type t = Variant [@@deriving typed_variants, sexp, equal]
+
+      let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+        | Variant -> Parser.unit
+      ;;
+    end
+
+    type t =
+      | Foo of { a : int } [@typed_fields]
+      | Bar of
+          { b : int
+          ; c : Variant.t
+          ; d : int
+          } [@typed_fields]
+    [@@deriving typed_variants, sexp, equal]
+
+    module Anon_for_foo = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_foo
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | A -> Parser.from_path Value_parser.int
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ A ]
+    end
+
+    module Anon_for_bar = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_bar
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | B -> Parser.from_path Value_parser.int
+        | C -> Parser.Variant.make (module Variant)
+        | D -> Parser.with_prefix [ "d" ] (Parser.from_path Value_parser.int)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ B; C; D ]
+    end
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Foo -> Parser.with_prefix [] (Parser.Record.make (module Anon_for_foo))
+      | Bar -> Parser.Record.make (module Anon_for_bar)
+    ;;
+  end
+  in
+  let parser = Parser.Variant.make (module Url) in
+  show_structure parser;
+  [%expect
+    {|
+    URL parser looks good!
+    ┌────────────────────────────┐
+    │ All urls                   │
+    ├────────────────────────────┤
+    │ /<int>                     │
+    │ /bar/<int>/variant/d/<int> │
+    └────────────────────────────┘
+
+    (Variant
+     (constructor_declarations
+      ((bar
+        (With_prefix (prefix (bar))
+         (t
+          (Record
+           (label_declarations
+            ((b (From_path Int))
+             (c
+              (Variant
+               (constructor_declarations
+                ((variant (With_prefix (prefix (variant)) (t Unit)))))
+               (patterns
+                ((variant ((pattern ((Match variant))) (needed_match Prefix)))))
+               (override_namespace ())))
+             (d (With_prefix (prefix (d)) (t (From_path Int))))))
+           (path_order (b c d))))))
+       (foo
+        (With_prefix (prefix ())
+         (t (Record (label_declarations ((a (From_path Int)))) (path_order (a))))))))
+     (patterns
+      ((bar ((pattern ((Match bar))) (needed_match Prefix)))
+       (foo ((pattern ()) (needed_match Prefix)))))
+     (override_namespace ()))
+    |}];
+  let projection = Parser.eval ~equal:[%equal: Url.t] parser in
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "12" ]
+    ~query:String.Map.empty
+    ~sexp_of_t:Url.sexp_of_t
+    ~expect:(fun () -> [%expect {| (Foo (a 12)) |}]);
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "bar"; "12"; "variant"; "d"; "132" ]
+    ~query:String.Map.empty
+    ~sexp_of_t:Url.sexp_of_t
+    ~expect:(fun () -> [%expect {| (Bar (b 12) (c Variant) (d 132)) |}])
+;;
+
+let%expect_test "Applying [with_prefix []] to a lookahead url should be a no-op" =
+  let module Url = struct
+    type t =
+      | Foo of
+          { a : int
+          ; b : int
+          } [@typed_fields]
+      | Bar of
+          { c : int
+          ; d : int
+          } [@typed_fields]
+    [@@deriving typed_variants, sexp, equal]
+
+    module Anon_for_foo = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_foo
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | A -> Parser.from_path Value_parser.int
+        | B -> Parser.with_prefix [ "b" ] (Parser.from_path Value_parser.int)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ A; B ]
+    end
+
+    module Anon_for_bar = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_bar
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | C -> Parser.from_path Value_parser.int
+        | D -> Parser.with_prefix [ "d" ] (Parser.from_path Value_parser.int)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ C; D ]
+    end
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Foo -> Parser.with_prefix [] (Parser.Record.make (module Anon_for_foo))
+      | Bar -> Parser.with_prefix [] (Parser.Record.make (module Anon_for_bar))
+    ;;
+  end
+  in
+  let parser = Parser.Variant.make (module Url) in
+  show_structure parser;
+  [%expect
+    {|
+    URL parser looks good!
+    ┌────────────────┐
+    │ All urls       │
+    ├────────────────┤
+    │ /<int>/b/<int> │
+    │ /<int>/d/<int> │
+    └────────────────┘
+
+    (Variant
+     (constructor_declarations
+      ((bar
+        (With_prefix (prefix ())
+         (t
+          (Record
+           (label_declarations
+            ((c (From_path Int))
+             (d (With_prefix (prefix (d)) (t (From_path Int))))))
+           (path_order (c d))))))
+       (foo
+        (With_prefix (prefix ())
+         (t
+          (Record
+           (label_declarations
+            ((a (From_path Int))
+             (b (With_prefix (prefix (b)) (t (From_path Int))))))
+           (path_order (a b))))))))
+     (patterns
+      ((bar ((pattern (Ignore (Match d))) (needed_match Prefix)))
+       (foo ((pattern (Ignore (Match b))) (needed_match Prefix)))))
+     (override_namespace ()))
+    |}]
+;;
+
 module Record = struct
   type t =
     { a : int
