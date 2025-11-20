@@ -438,7 +438,7 @@ let%expect_test "from_query_many can parse empty list options from missing query
     ~query:String.Map.empty
     ~sexp_of_t:Url.sexp_of_t
     ~expect:(fun () ->
-      (* Some []*)
+      (* Some [] *)
       [%expect {| ((strings (()))) |}])
 ;;
 
@@ -511,7 +511,7 @@ module Many1_query = struct
   let parser_for_field : type a. a Typed_field.t -> a Parser.t =
     let open Parsers in
     function
-    | Ints -> from_query_many_at_least_1 int (* <-- many1!  *)
+    | Ints -> from_query_many_at_least_1 int (* <-- many1! *)
     | Floats -> from_query_many float
   ;;
 
@@ -1271,9 +1271,9 @@ module%test [@name "quickcheck"] _ = struct
         | Int_list_with_fallback ->
           (* This equality function is weird, but it makes
 
-                 ["1"; "not an int"; "3"; "4"] equal to ["1"; "100"; "3"; "4"]
+             ["1"; "not an int"; "3"; "4"] equal to ["1"; "100"; "3"; "4"]
 
-                 which is useful to make check that the fallback did its work!
+             which is useful to make check that the fallback did its work!
           *)
           Some
             (List.equal (fun a b ->
@@ -1569,7 +1569,7 @@ let%expect_test "slash escaping (legacy test)" =
   (* This test shows current behavior. Before, slash escaping occurred one-off at the
      `Parser.t`'s (Components.t <=> 'a) level. Now it occurs at the top level once at the
      (Uri.t <=> 'a) level. This test shows that path parsing does not occur by
-     `Projection.parse_exn`*)
+     `Projection.parse_exn` *)
   let parser = Parser.Record.make (module Path_query) in
   let projection = Parser.original_eval ~encoding_behavior:Legacy_incorrect parser in
   let query = String.Map.empty in

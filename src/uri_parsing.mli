@@ -515,7 +515,7 @@ module Parser : sig
           └───────────────────────────────────────────────────┘ |}]
           ;;
 
-          (*Doing this instead results in: *)
+          (* Doing this instead results in: *)
           let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
             | A -> Parser.Record.make ~namespace:[ "my_a" ] (module Nested)
             | B -> Parser.Record.make ~namespace:[ "my_b" ] (module Nested)

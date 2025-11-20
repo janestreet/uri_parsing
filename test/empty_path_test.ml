@@ -347,8 +347,8 @@ let () =
           ~drop:(fun () -> [%expect {| (parsed Homepage) |}]);
         let unparsed = projection.unparse (Parse_result.create parsed) in
         print_s [%message (unparsed : Uri_jane.t)];
-        (* The ending slash is dropped with [Drop_trailing_slashes], so this doesn't
-           quite roundtrip. *)
+        (* The ending slash is dropped with [Drop_trailing_slashes], so this doesn't quite
+           roundtrip. *)
         expect_diff
           ~keep:(fun () -> [%expect {| (unparsed prefix/) |}])
           ~drop:(fun () -> [%expect {| (unparsed prefix) |}]);
