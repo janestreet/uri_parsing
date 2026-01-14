@@ -438,7 +438,7 @@ let%expect_test "from_query_many can parse empty list options from missing query
     ~query:String.Map.empty
     ~sexp_of_t:Url.sexp_of_t
     ~expect:(fun () ->
-      (* Some []*)
+      (* Some [] *)
       [%expect {| ((strings (()))) |}])
 ;;
 
@@ -511,7 +511,7 @@ module Many1_query = struct
   let parser_for_field : type a. a Typed_field.t -> a Parser.t =
     let open Parsers in
     function
-    | Ints -> from_query_many_at_least_1 int (* <-- many1!  *)
+    | Ints -> from_query_many_at_least_1 int (* <-- many1! *)
     | Floats -> from_query_many float
   ;;
 
@@ -1271,9 +1271,9 @@ module%test [@name "quickcheck"] _ = struct
         | Int_list_with_fallback ->
           (* This equality function is weird, but it makes
 
-                 ["1"; "not an int"; "3"; "4"] equal to ["1"; "100"; "3"; "4"]
+             ["1"; "not an int"; "3"; "4"] equal to ["1"; "100"; "3"; "4"]
 
-                 which is useful to make check that the fallback did its work!
+             which is useful to make check that the fallback did its work!
           *)
           Some
             (List.equal (fun a b ->
@@ -1300,15 +1300,17 @@ module%test [@name "quickcheck"] _ = struct
     ;;
   end
 
-  let%quick_test "round-trip generated Query.t" =
-    fun (t : Query.t) ->
-    let parser = Parser.Variant.make ~namespace:[] (module Query) in
-    let projection = Parser.eval ~equal:[%equal: Query.t] parser in
-    let { Components.query = serialized; path; fragment } =
-      projection.unparse { Parse_result.result = t; remaining = Components.empty }
+  let%expect_test "round-trip generated Query.t" =
+    let%quick_test prop (t : Query.t) =
+      let parser = Parser.Variant.make ~namespace:[] (module Query) in
+      let projection = Parser.eval ~equal:[%equal: Query.t] parser in
+      let { Components.query = serialized; path; fragment } =
+        projection.unparse { Parse_result.result = t; remaining = Components.empty }
+      in
+      let result = projection.parse_exn { query = serialized; path; fragment } in
+      assert (Query.equal t result.result)
     in
-    let result = projection.parse_exn { query = serialized; path; fragment } in
-    assert (Query.equal t result.result)
+    ()
   ;;
 
   let generator =
@@ -1396,27 +1398,31 @@ module%test [@name "quickcheck"] _ = struct
         is_equal)
   ;;
 
-  let%quick_test "attempt to parse generated queries" =
-    fun ((query, path, fragment) :
-          (string list String.Map.t * string list * int option
-          [@generator generator] [@shrinker Shrinker.atomic])) ->
-    let parser = Parser.Variant.make ~namespace:[] (module Query) in
-    let projection = Parser.eval ~equal:[%equal: Query.t] parser in
-    let result =
-      projection.parse_exn
-        { query; path; fragment = Option.map fragment ~f:Int.to_string }
-    in
-    let { Components.query = unparsed_query
-        ; path = unparsed_path
-        ; fragment = unparsed_fragment
-        }
+  let%expect_test "attempt to parse generated queries" =
+    let%quick_test prop
+      ((query, path, fragment) :
+        (string list String.Map.t * string list * int option
+        [@generator generator] [@shrinker Shrinker.atomic]))
       =
-      projection.unparse result
+      let parser = Parser.Variant.make ~namespace:[] (module Query) in
+      let projection = Parser.eval ~equal:[%equal: Query.t] parser in
+      let result =
+        projection.parse_exn
+          { query; path; fragment = Option.map fragment ~f:Int.to_string }
+      in
+      let { Components.query = unparsed_query
+          ; path = unparsed_path
+          ; fragment = unparsed_fragment
+          }
+        =
+        projection.unparse result
+      in
+      assert (maps_equal query unparsed_query);
+      assert (List.equal String.equal unparsed_path path);
+      assert (
+        [%equal: string option] (Option.map fragment ~f:Int.to_string) unparsed_fragment)
     in
-    assert (maps_equal query unparsed_query);
-    assert (List.equal String.equal unparsed_path path);
-    assert (
-      [%equal: string option] (Option.map fragment ~f:Int.to_string) unparsed_fragment)
+    ()
   ;;
 end
 
@@ -1569,7 +1575,7 @@ let%expect_test "slash escaping (legacy test)" =
   (* This test shows current behavior. Before, slash escaping occurred one-off at the
      `Parser.t`'s (Components.t <=> 'a) level. Now it occurs at the top level once at the
      (Uri.t <=> 'a) level. This test shows that path parsing does not occur by
-     `Projection.parse_exn`*)
+     `Projection.parse_exn` *)
   let parser = Parser.Record.make (module Path_query) in
   let projection = Parser.original_eval ~encoding_behavior:Legacy_incorrect parser in
   let query = String.Map.empty in
@@ -3153,6 +3159,283 @@ let%expect_test "Weird lookahead urls" =
     ~query:String.Map.empty
     ~sexp_of_t:Url.sexp_of_t
     ~expect:(fun () -> [%expect {| (Bar (c 12) (d 132)) |}])
+;;
+
+let%expect_test "Lookahead urls with extra Path_order entries" =
+  let module Url = struct
+    type t =
+      | Foo of { a : int } [@typed_fields]
+      | Bar of
+          { b : int
+          ; c : int
+          ; d : int
+          } [@typed_fields]
+    [@@deriving typed_variants, sexp, equal]
+
+    module Anon_for_foo = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_foo
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | A -> Parser.from_path Value_parser.int
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ A ]
+    end
+
+    module Anon_for_bar = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_bar
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | B -> Parser.from_path Value_parser.int
+        | C -> Parser.from_query_required Value_parser.int
+        | D -> Parser.with_prefix [ "d" ] (Parser.from_path Value_parser.int)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ B; C; D ]
+    end
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Foo -> Parser.with_prefix [] (Parser.Record.make (module Anon_for_foo))
+      | Bar -> Parser.Record.make (module Anon_for_bar)
+    ;;
+  end
+  in
+  let parser = Parser.Variant.make (module Url) in
+  show_structure parser;
+  [%expect
+    {|
+    URL parser looks good!
+    ┌────────────────────────────┐
+    │ All urls                   │
+    ├────────────────────────────┤
+    │ /<int>                     │
+    │ /<int>/d/<int>?bar.c=<int> │
+    └────────────────────────────┘
+
+    (Variant
+     (constructor_declarations
+      ((bar
+        (Record
+         (label_declarations
+          ((b (From_path Int)) (c (From_query_required (value_parser Int)))
+           (d (With_prefix (prefix (d)) (t (From_path Int))))))
+         (path_order (b c d))))
+       (foo
+        (With_prefix (prefix ())
+         (t (Record (label_declarations ((a (From_path Int)))) (path_order (a))))))))
+     (patterns
+      ((bar ((pattern (Ignore (Match d))) (needed_match Prefix)))
+       (foo ((pattern ()) (needed_match Prefix)))))
+     (override_namespace ()))
+    |}];
+  let projection = Parser.eval ~equal:[%equal: Url.t] parser in
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "12" ]
+    ~query:String.Map.empty
+    ~sexp_of_t:Url.sexp_of_t
+    ~expect:(fun () -> [%expect {| (Foo (a 12)) |}]);
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "12"; "d"; "132" ]
+    ~query:(String.Map.singleton "bar.c" [ "14" ])
+    ~sexp_of_t:Url.sexp_of_t
+    ~expect:(fun () -> [%expect {| (Bar (b 12) (c 14) (d 132)) |}])
+;;
+
+let%expect_test "Urls that would be lookaheads if not for a variant in the middle" =
+  let module Url = struct
+    module Variant = struct
+      type t = Variant [@@deriving typed_variants, sexp, equal]
+
+      let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+        | Variant -> Parser.unit
+      ;;
+    end
+
+    type t =
+      | Foo of { a : int } [@typed_fields]
+      | Bar of
+          { b : int
+          ; c : Variant.t
+          ; d : int
+          } [@typed_fields]
+    [@@deriving typed_variants, sexp, equal]
+
+    module Anon_for_foo = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_foo
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | A -> Parser.from_path Value_parser.int
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ A ]
+    end
+
+    module Anon_for_bar = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_bar
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | B -> Parser.from_path Value_parser.int
+        | C -> Parser.Variant.make (module Variant)
+        | D -> Parser.with_prefix [ "d" ] (Parser.from_path Value_parser.int)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ B; C; D ]
+    end
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Foo -> Parser.with_prefix [] (Parser.Record.make (module Anon_for_foo))
+      | Bar -> Parser.Record.make (module Anon_for_bar)
+    ;;
+  end
+  in
+  let parser = Parser.Variant.make (module Url) in
+  show_structure parser;
+  [%expect
+    {|
+    URL parser looks good!
+    ┌────────────────────────────┐
+    │ All urls                   │
+    ├────────────────────────────┤
+    │ /<int>                     │
+    │ /bar/<int>/variant/d/<int> │
+    └────────────────────────────┘
+
+    (Variant
+     (constructor_declarations
+      ((bar
+        (With_prefix (prefix (bar))
+         (t
+          (Record
+           (label_declarations
+            ((b (From_path Int))
+             (c
+              (Variant
+               (constructor_declarations
+                ((variant (With_prefix (prefix (variant)) (t Unit)))))
+               (patterns
+                ((variant ((pattern ((Match variant))) (needed_match Prefix)))))
+               (override_namespace ())))
+             (d (With_prefix (prefix (d)) (t (From_path Int))))))
+           (path_order (b c d))))))
+       (foo
+        (With_prefix (prefix ())
+         (t (Record (label_declarations ((a (From_path Int)))) (path_order (a))))))))
+     (patterns
+      ((bar ((pattern ((Match bar))) (needed_match Prefix)))
+       (foo ((pattern ()) (needed_match Prefix)))))
+     (override_namespace ()))
+    |}];
+  let projection = Parser.eval ~equal:[%equal: Url.t] parser in
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "12" ]
+    ~query:String.Map.empty
+    ~sexp_of_t:Url.sexp_of_t
+    ~expect:(fun () -> [%expect {| (Foo (a 12)) |}]);
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "bar"; "12"; "variant"; "d"; "132" ]
+    ~query:String.Map.empty
+    ~sexp_of_t:Url.sexp_of_t
+    ~expect:(fun () -> [%expect {| (Bar (b 12) (c Variant) (d 132)) |}])
+;;
+
+let%expect_test "Applying [with_prefix []] to a lookahead url should be a no-op" =
+  let module Url = struct
+    type t =
+      | Foo of
+          { a : int
+          ; b : int
+          } [@typed_fields]
+      | Bar of
+          { c : int
+          ; d : int
+          } [@typed_fields]
+    [@@deriving typed_variants, sexp, equal]
+
+    module Anon_for_foo = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_foo
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | A -> Parser.from_path Value_parser.int
+        | B -> Parser.with_prefix [ "b" ] (Parser.from_path Value_parser.int)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ A; B ]
+    end
+
+    module Anon_for_bar = struct
+      module Typed_field =
+        Typed_variant.Typed_variant_anonymous_records.Typed_field_of_bar
+
+      let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
+        | C -> Parser.from_path Value_parser.int
+        | D -> Parser.with_prefix [ "d" ] (Parser.from_path Value_parser.int)
+      ;;
+
+      module Path_order = Path_order (Typed_field)
+
+      let path_order = Path_order.T [ C; D ]
+    end
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Foo -> Parser.with_prefix [] (Parser.Record.make (module Anon_for_foo))
+      | Bar -> Parser.with_prefix [] (Parser.Record.make (module Anon_for_bar))
+    ;;
+  end
+  in
+  let parser = Parser.Variant.make (module Url) in
+  show_structure parser;
+  [%expect
+    {|
+    URL parser looks good!
+    ┌────────────────┐
+    │ All urls       │
+    ├────────────────┤
+    │ /<int>/b/<int> │
+    │ /<int>/d/<int> │
+    └────────────────┘
+
+    (Variant
+     (constructor_declarations
+      ((bar
+        (With_prefix (prefix ())
+         (t
+          (Record
+           (label_declarations
+            ((c (From_path Int))
+             (d (With_prefix (prefix (d)) (t (From_path Int))))))
+           (path_order (c d))))))
+       (foo
+        (With_prefix (prefix ())
+         (t
+          (Record
+           (label_declarations
+            ((a (From_path Int))
+             (b (With_prefix (prefix (b)) (t (From_path Int))))))
+           (path_order (a b))))))))
+     (patterns
+      ((bar ((pattern (Ignore (Match d))) (needed_match Prefix)))
+       (foo ((pattern (Ignore (Match b))) (needed_match Prefix)))))
+     (override_namespace ()))
+    |}]
 ;;
 
 module Record = struct

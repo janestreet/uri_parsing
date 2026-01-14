@@ -460,7 +460,6 @@ module Parser : sig
 
           Rules! (No need to remember these rules if you have an expect test with
           [check_ok_and_print_urls_or_errors])
-          - Only the fields that need things from path should be in [path_order].
           - All of the fields that need things from path must be in [path_order].
           - No duplicates allowed. *)
       val path_order : Path_order(Typed_field).t
@@ -516,7 +515,7 @@ module Parser : sig
           └───────────────────────────────────────────────────┘ |}]
           ;;
 
-          (*Doing this instead results in: *)
+          (* Doing this instead results in: *)
           let parser_for_field : type a. a Typed_field.t -> a Parser.t = function
             | A -> Parser.Record.make ~namespace:[ "my_a" ] (module Nested)
             | B -> Parser.Record.make ~namespace:[ "my_b" ] (module Nested)

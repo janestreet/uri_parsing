@@ -250,8 +250,8 @@ module Components = struct
   ;;
 
   let split_if_nonempty = function
-    (* NOTE: We need to special case this situation as we would
-       prefer for String.split to return `[]` instead of `[""]` *)
+    (* NOTE: We need to special case this situation as we would prefer for String.split to
+       return `[]` instead of `[""]` *)
     | "" -> []
     | p -> String.split ~on:'/' p
   ;;
@@ -531,17 +531,22 @@ module Parser = struct
                option
         =
         fun ~prefix t ->
+        let does_not_read_from_path = Some (prefix, `Continue) in
         match t with
-        | Unit -> None
+        | Unit -> does_not_read_from_path
         | Project { input; _ } -> next_declared_path_pattern ~prefix input
-        | From_query_required _ -> None
-        | From_query_optional _ -> None
-        | From_query_flag _ -> None
-        | From_query_optional_with_default _ -> None
-        | From_fragment _ -> None
-        | From_query_many _ -> None
+        | From_query_required _ -> does_not_read_from_path
+        | From_query_optional _ -> does_not_read_from_path
+        | From_query_flag _ -> does_not_read_from_path
+        | From_query_optional_with_default _ -> does_not_read_from_path
+        | From_fragment _ -> does_not_read_from_path
+        | From_query_many _ -> does_not_read_from_path
         | From_path _ -> Some (prefix @ [ `Ignore ], `Continue)
-        | From_remaining_path _ -> Some (prefix, `Continue)
+        | From_remaining_path _ -> None
+        | With_prefix { prefix = []; t } ->
+          (match next_declared_path_pattern ~prefix t with
+           | Some (_, (`Stop_prefix | `Stop_remaining_path)) as new_ -> new_
+           | Some (_, `Continue) | None -> Some ([], `Stop_prefix))
         | With_prefix { prefix = inner_prefix; _ } ->
           Some (prefix @ List.map inner_prefix ~f:(fun x -> `Match x), `Stop_prefix)
         | With_remaining_path { needed_path; _ } ->
@@ -550,12 +555,14 @@ module Parser = struct
           let module M =
             (val record_module : Record.Cached_s with type Typed_field.derived_on = a)
           in
-          List.fold M.path_order ~init:None ~f:(fun acc { f = T f } ->
-            match acc with
-            | Some (_, `Stop_prefix) | Some (_, `Stop_remaining_path) -> acc
-            | None -> next_declared_path_pattern ~prefix (M.parser_for_field f)
-            | Some (prefix, `Continue) ->
-              next_declared_path_pattern ~prefix (M.parser_for_field f))
+          List.fold
+            M.path_order
+            ~init:(Some (prefix, `Continue))
+            ~f:(fun acc { f = T f } ->
+              match acc with
+              | Some (_, (`Stop_prefix | `Stop_remaining_path)) | None -> acc
+              | Some (prefix, `Continue) ->
+                next_declared_path_pattern ~prefix (M.parser_for_field f))
         | Variant _ -> None
         | Query_based_variant _ -> None
         | Optional_query_fields { t } -> next_declared_path_pattern ~prefix t
@@ -570,11 +577,16 @@ module Parser = struct
             [@@deriving sexp_of, equal]
           end
           in
-          (match [%equal: T.t] new_next_path prev_next_path with
+          let equivalent a b =
+            match a, b with
+            | (Some (_, `Continue) | None), (Some (_, `Continue) | None) -> true
+            | _, _ -> [%equal: T.t] a b
+          in
+          (match equivalent new_next_path prev_next_path with
            | true -> ()
            | false ->
              (* NOTE: This is also checked statically. This warning should only be printed
-             out if someone ignores the result of [check_ok]. *)
+                out if someone ignores the result of [check_ok]. *)
              print_s
                [%message
                  "Ambiguity, a Parser.new_parser's new parser and previous parser have \
@@ -1286,30 +1298,30 @@ module Parser = struct
       let projections_by_field = Projection_map.create { f = eval_field } in
       let projection_for_field f = Projection_map.find projections_by_field f in
       (* Unfortunately, the parsed record can't be created in one go with [create] since
-           path parsing cares about the order that the path fields are found in
-           [path_order]. A [Typed_field_map] with an [Option] data is used to set the
-           parsed values in the desired order.
+         path parsing cares about the order that the path fields are found in
+         [path_order]. A [Typed_field_map] with an [Option] data is used to set the parsed
+         values in the desired order.
 
-           Here is the order for [parse_exn]:
+         Here is the order for [parse_exn]:
 
-           1. Call [parse_exn] for fields that appear in [path_order] in the order they
-           appear in [path_order] and store their results in the result map.
-           2. Call [parse_exn] for all other fields in any order, and also store their
-           results in the result map.
-           3. At this point every value in the map is [Some], so now [create] can be
-           called to produce the record in one go.
+         1. Call [parse_exn] for fields that appear in [path_order] in the order they
+            appear in [path_order] and store their results in the result map.
+         2. Call [parse_exn] for all other fields in any order, and also store their
+            results in the result map.
+         3. At this point every value in the map is [Some], so now [create] can be called
+            to produce the record in one go.
 
-           Here is the order for [unparse] (it's the inverse of [parse_exn]):
+         Here is the order for [unparse] (it's the inverse of [parse_exn]):
 
-           1. Call [unparse] for all fields except those that are in the path (folding
-           over the remaining components)
-           2. Call [unparse] for the fields that appear in the path in the inverse order
-           (folding over the remaining components).
-           3. Unparsed result is in remaining functions.
+         1. Call [unparse] for all fields except those that are in the path (folding over
+            the remaining components)
+         2. Call [unparse] for the fields that appear in the path in the inverse order
+            (folding over the remaining components).
+         3. Unparsed result is in remaining functions.
       *)
       let module Result_map = Typed_field_map.Make (M.Typed_field) (Option) in
-      (* [parse_order] has the path order fields at the beginning and all of the
-           remaining fields at the end to satisfy order dependent steps trivially. *)
+      (* [parse_order] has the path order fields at the beginning and all of the remaining
+         fields at the end to satisfy order dependent steps trivially. *)
       let parse_order =
         let module Packed_field = struct
           module T = struct
@@ -1439,9 +1451,9 @@ module Parser = struct
         | _ -> false
       in
       (* For variants, the parse order is "most-specific to least-specific". This is
-           defined as:
-           1. Which variant's path pattern has more elements
-           2. (If tied) total matches come before partial matches *)
+         defined as:
+         1. Which variant's path pattern has more elements
+         2. (If tied) total matches come before partial matches *)
       let parse_order =
         List.sort M.Typed_variant.Packed.all ~compare:(fun { f = T va } { f = T vb } ->
           Path_pattern.compare_specificity
@@ -2351,7 +2363,7 @@ module Parser = struct
     : type a. has_seen_end_of_path:bool -> a T.t -> bool
     =
     let ( || ) a b =
-      (* NOTE: This is silly, but avoids (||)'s short-circuiting. *)
+      (*=NOTE: This is silly, but avoids (||)'s short-circuiting. *)
       a || b
     in
     fun ~has_seen_end_of_path t ->
@@ -2555,7 +2567,7 @@ module Parser = struct
   let rec check_that_there_are_no_multiple_fragment_parsers
     : type a. has_seen_fragment:bool -> a T.t -> bool
     =
-    (* NOTE: We do not want || to short-circuit. *)
+    (*=NOTE: We do not want || to short-circuit. *)
     let ( || ) a b = a || b in
     fun ~has_seen_fragment t ->
       match t with
@@ -2725,9 +2737,8 @@ module Parser = struct
     let module M = struct
       type 'a parser = 'a t
 
-      (* NOTE: We are doing a record here instead of a tuple
-         so that the namespace names for these fields are "first"
-         and "second" instead of "t_1" and "t_2"*)
+      (* NOTE: We are doing a record here instead of a tuple so that the namespace names
+         for these fields are "first" and "second" instead of "t_1" and "t_2" *)
       type t =
         { first : first
         ; second : second

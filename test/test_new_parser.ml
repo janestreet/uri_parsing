@@ -411,3 +411,52 @@ let%expect_test "[Parser.new_parser] remaining_path check" =
     └───────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
     |}]
 ;;
+
+let%expect_test "[Parser.new_parser] ambiguity checks inside variant" =
+  let module Variant = struct
+    type t = Container of int [@@deriving typed_variants, sexp]
+
+    let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+      | Container ->
+        Parser.new_parser
+          (Parser.from_path Value_parser.int)
+          ~previous:(Parser.from_query_required Value_parser.int)
+          ~f:Fn.id
+    ;;
+  end
+  in
+  let parser = Versioned_parser.first_parser (Parser.Variant.make (module Variant)) in
+  Versioned_parser.check_ok_and_print_urls_or_errors parser;
+  [%expect
+    {|
+    URL parser looks good!
+    ┌────────────────────────────┐
+    │ All urls                   │
+    ├────────────────────────────┤
+    │ /container/<int>           │
+    │ /container?container=<int> │
+    └────────────────────────────┘
+    |}];
+  let projection = Versioned_parser.eval parser in
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "container"; "1" ]
+    ~query:String.Map.empty
+    ~sexp_of_t:[%sexp_of: Variant.t]
+    ~expect:(fun () -> [%expect {| (Container 1) |}]);
+  expect_output_and_identity_roundtrip
+    projection
+    ~path:[ "container" ]
+    ~query:(String.Map.of_alist_exn [ "container", [ "2" ] ])
+    ~sexp_of_t:[%sexp_of: Variant.t]
+    ~expect:(fun () -> [%expect {| (Container 2) |}]);
+  [%expect
+    {|
+    === DIFF HUNK ===
+    -|(container)
+    +|(container 2)
+    === DIFF HUNK ===
+    -|((container (2)))
+    +|()
+    |}]
+;;
