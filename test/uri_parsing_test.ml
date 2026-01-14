@@ -1300,15 +1300,17 @@ module%test [@name "quickcheck"] _ = struct
     ;;
   end
 
-  let%quick_test "round-trip generated Query.t" =
-    fun (t : Query.t) ->
-    let parser = Parser.Variant.make ~namespace:[] (module Query) in
-    let projection = Parser.eval ~equal:[%equal: Query.t] parser in
-    let { Components.query = serialized; path; fragment } =
-      projection.unparse { Parse_result.result = t; remaining = Components.empty }
+  let%expect_test "round-trip generated Query.t" =
+    let%quick_test prop (t : Query.t) =
+      let parser = Parser.Variant.make ~namespace:[] (module Query) in
+      let projection = Parser.eval ~equal:[%equal: Query.t] parser in
+      let { Components.query = serialized; path; fragment } =
+        projection.unparse { Parse_result.result = t; remaining = Components.empty }
+      in
+      let result = projection.parse_exn { query = serialized; path; fragment } in
+      assert (Query.equal t result.result)
     in
-    let result = projection.parse_exn { query = serialized; path; fragment } in
-    assert (Query.equal t result.result)
+    ()
   ;;
 
   let generator =
@@ -1396,27 +1398,31 @@ module%test [@name "quickcheck"] _ = struct
         is_equal)
   ;;
 
-  let%quick_test "attempt to parse generated queries" =
-    fun ((query, path, fragment) :
-          (string list String.Map.t * string list * int option
-          [@generator generator] [@shrinker Shrinker.atomic])) ->
-    let parser = Parser.Variant.make ~namespace:[] (module Query) in
-    let projection = Parser.eval ~equal:[%equal: Query.t] parser in
-    let result =
-      projection.parse_exn
-        { query; path; fragment = Option.map fragment ~f:Int.to_string }
-    in
-    let { Components.query = unparsed_query
-        ; path = unparsed_path
-        ; fragment = unparsed_fragment
-        }
+  let%expect_test "attempt to parse generated queries" =
+    let%quick_test prop
+      ((query, path, fragment) :
+        (string list String.Map.t * string list * int option
+        [@generator generator] [@shrinker Shrinker.atomic]))
       =
-      projection.unparse result
+      let parser = Parser.Variant.make ~namespace:[] (module Query) in
+      let projection = Parser.eval ~equal:[%equal: Query.t] parser in
+      let result =
+        projection.parse_exn
+          { query; path; fragment = Option.map fragment ~f:Int.to_string }
+      in
+      let { Components.query = unparsed_query
+          ; path = unparsed_path
+          ; fragment = unparsed_fragment
+          }
+        =
+        projection.unparse result
+      in
+      assert (maps_equal query unparsed_query);
+      assert (List.equal String.equal unparsed_path path);
+      assert (
+        [%equal: string option] (Option.map fragment ~f:Int.to_string) unparsed_fragment)
     in
-    assert (maps_equal query unparsed_query);
-    assert (List.equal String.equal unparsed_path path);
-    assert (
-      [%equal: string option] (Option.map fragment ~f:Int.to_string) unparsed_fragment)
+    ()
   ;;
 end
 

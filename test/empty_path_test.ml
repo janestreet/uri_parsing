@@ -137,6 +137,75 @@ let () =
       ;;
     end
 
+    module%test [@name "Homepage and param, where param is read from query"] _ = struct
+      module Url = struct
+        type t =
+          | Homepage
+          | Param of string
+        [@@deriving typed_variants, sexp, equal, compare]
+
+        let parser_for_variant : type a. a Typed_variant.t -> a Parser.t = function
+          | Homepage -> Parser.end_of_path Parser.unit
+          | Param ->
+            Parser.with_prefix [] (Parser.from_query_required Value_parser.string)
+        ;;
+      end
+
+      let parser = Parser.Variant.make (module Url)
+      let versioned_parser = Versioned_parser.first_parser parser
+
+      let%expect_test "BUG: This should either error, or the Param roundtrip below \
+                       should pass"
+        =
+        Versioned_parser.check_ok_and_print_urls_or_errors versioned_parser;
+        [%expect
+          {|
+          URL parser looks good!
+          ┌──────────────────┐
+          │ All urls         │
+          ├──────────────────┤
+          │ /                │
+          │ /?param=<string> │
+          └──────────────────┘
+          |}]
+      ;;
+
+      let projection =
+        Versioned_parser.eval_for_uri ~trailing_slash_behavior versioned_parser
+      ;;
+
+      let%expect_test "Homepage roundtrip" =
+        let url = Url.Homepage in
+        let unparsed = projection.unparse (Parse_result.create url) in
+        print_s [%message (unparsed : Uri_jane.t)];
+        [%expect {| (unparsed "") |}];
+        let { Parse_result.result = reparsed; _ } = projection.parse_exn unparsed in
+        print_s [%message (reparsed : Url.t)];
+        [%expect {| (reparsed Homepage) |}];
+        [%test_eq: Url.t] url reparsed
+      ;;
+
+      let%expect_test "BUG: Param roundtrip" =
+        let url = Url.Param "foo" in
+        let unparsed = projection.unparse (Parse_result.create url) in
+        print_s [%message (unparsed : Uri_jane.t)];
+        [%expect {| (unparsed ?param=foo) |}];
+        let { Parse_result.result = reparsed; _ } = projection.parse_exn unparsed in
+        print_s [%message (reparsed : Url.t)];
+        [%expect {| (reparsed Homepage) |}];
+        (* These should have been equal. *)
+        Expect_test_patdiff.print_patdiff_s
+          ([%sexp_of: Url.t] url)
+          ([%sexp_of: Url.t] reparsed);
+        [%expect
+          {|
+          === DIFF HUNK ===
+          -|(Param foo)
+          +|Homepage
+          |}]
+      ;;
+    end
+
     module%test [@name "Only Homepage"] _ = struct
       module Url = struct
         type t = Homepage [@@deriving typed_variants, sexp, equal, compare]
