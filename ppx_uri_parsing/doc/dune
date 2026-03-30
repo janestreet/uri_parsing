@@ -1,0 +1,5 @@
+(library
+ (name ppx_uri_parsing_doc)
+ (libraries core for_ppx_uri_parsing uri_parsing)
+ (preprocess
+  (pps ppx_jane ppx_uri_parsing)))

@@ -1,0 +1,5 @@
+(alias
+ (name mdx-deps)
+ (deps doc/main_for_mdx.ml doc/path_query_for_mdx.ml doc/routes_for_mdx.ml
+   doc/query_defaults_for_mdx.ml doc/custom_for_mdx.ml
+   doc/fallback_for_mdx.ml))

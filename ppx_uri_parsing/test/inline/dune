@@ -1,0 +1,5 @@
+(library
+ (name ppx_uri_parsing_inline_test)
+ (libraries core uri_parsing)
+ (preprocess
+  (pps ppx_jane ppx_uri_parsing)))

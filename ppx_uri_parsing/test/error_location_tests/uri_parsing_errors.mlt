@@ -1,0 +1,452 @@
+#print_line_numbers true
+
+open! Core
+
+(* Typed_fields *)
+
+type t = { foo : int } [@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 7, characters 0-47:
+Error: Unbound module Typed_field
+|}]
+
+type a = { foo : int } [@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 15, characters 0-47:
+Error: Unbound module Typed_field_of_a
+|}]
+
+type t = Foo of int [@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 23, characters 0-44:
+Error: Unbound module Typed_variant
+|}]
+
+type a = Foo of int [@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 31, characters 0-44:
+Error: Unbound module Typed_variant_of_a
+|}]
+
+(* Recursive types are disallowed *)
+
+type t =
+  | Nil
+  | Cons of t
+[@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 43, characters 12-13:
+Error: ppx_uri_parsing: Uri_parsing does not support recursive types
+|}]
+
+type t =
+  | Nil
+  | Cons of { foo : t }
+[@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 54, characters 20-21:
+Error: ppx_uri_parsing: Uri_parsing does not support recursive types
+|}]
+
+type t = { foo : t } [@@deriving typed_fields, uri_parsing]
+
+[%%expect
+  {|
+Line 63, characters 17-18:
+Error: ppx_uri_parsing: Uri_parsing does not support recursive types
+|}]
+
+(* Unfortunately, the only way out is to call [t] something else... *)
+type t = int [@@deriving uri_parsing]
+type nonrec t = { foo : t } [@@deriving typed_fields, uri_parsing]
+
+[%%expect
+  {|
+Line 73, characters 0-66:
+Error: nonrec is not compatible with the `typed_fields' preprocessor
+|}]
+
+(* Name conflicts (all errors are bugs here) *)
+
+type a = int [@@deriving uri_parsing]
+type _'a = int [@@deriving uri_parsing]
+
+type 'a t =
+  { foo : a
+  ; bar : 'a
+  }
+[@@deriving typed_fields, uri_parsing]
+
+[%%expect {| |}]
+
+type 'a t =
+  { foo : _'a
+  ; bar : 'a
+  }
+[@@deriving typed_fields, uri_parsing]
+
+[%%expect {| |}]
+
+(* sad, but not worth handling imo unless people complain *)
+type 'a t =
+  | Foo of { foo : _'a }
+  | Bar of 'a
+[@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 103, characters 0-91:
+Error: This variant or record definition does not match that of type
+         Typed_variant.Typed_variant_anonymous_records.foo
+       Fields do not match:
+         foo : _'a;
+       is not the same as:
+         foo : _'a/2;
+       The type a is not equal to the type _'a
+|}]
+
+type 't t = 't [@@deriving uri_parsing]
+
+[%%expect {| |}]
+
+(* Attributes *)
+
+type t = { foo : int [@uri_parsing.path] [@uri_parsing.query] }
+[@@deriving typed_fields, uri_parsing]
+
+[%%expect
+  {|
+Line 126, characters 11-61:
+Error: ppx_uri_parsing: [@uri_parsing.query] and [@uri_parsing.path] are not compatible
+|}]
+
+type t = { foo : int [@uri_parsing.index] } [@@deriving typed_fields, uri_parsing]
+
+[%%expect
+  {|
+Line 135, characters 23-40:
+Error: Attribute `uri_parsing.index' was not used.
+       Hint: `uri_parsing.index' is available for constructor declarations
+       but is
+       used here in the context of a label declaration.
+       Did you put it at the wrong level?
+|}]
+
+type t = { foo : int [@uri_parsing.stringable] } [@@deriving typed_fields, uri_parsing]
+
+[%%expect {| |}]
+
+type t = { foo : (int[@uri_parsing.stringable] [@uri_parsing.sexpable]) }
+[@@deriving typed_fields, uri_parsing]
+
+[%%expect
+  {|
+Line 151, characters 18-21:
+Error: ppx_uri_parsing: only one of [@uri_parsing.{sexpable,stringable,binable,bool,custom_parser}] can be specified for a given type
+|}]
+
+type t = Foo of int [@uri_parsing.index] [@uri_parsing.route "bar"]
+[@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 160, characters 9-67:
+Error: ppx_uri_parsing: [@uri_parsing.index] and [@uri_parsing.route] are not compatible
+|}]
+
+type t = Foo of (int option[@uri_parsing.stringable])
+[@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 169, characters 17-27:
+Error: ppx_string_conv: aliases to types with parameters not supported
+|}]
+
+type 'a t = Foo of ('a option[@uri_parsing.sexpable])
+[@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 178, characters 20-22:
+Error: ppx_sexp_conv: unbound type variable 'a
+|}]
+
+(* Unfortunate that this doesn't say that field_argument_type = int here, but hopefully
+   calling it [field_argument_type] helps (as opposed to, say, [a]) *)
+type t = { foo : (int[@uri_parsing.custom_parser parser_for_string]) }
+[@@deriving typed_fields, uri_parsing]
+
+[%%expect
+  {|
+Line 189, characters 49-66:
+Error: This expression has type
+         (string, [ `Value_parser ]) Derived_parser.t =
+           parse_from:Parse_from.t ->
+           namespace:string list ->
+           (string, [ `Value_parser ]) Parser_with_kind.t
+       but an expression was expected of type
+         parse_from:Parse_from.t ->
+         namespace:string list ->
+         (field_argument_type, [< `Parser | `Value_parser ])
+         Parser_with_kind.t
+       Hint: Did you pass in a custom parser of the correct type?
+       Type string is not compatible with type field_argument_type
+|}]
+
+type t = Foo of (int[@uri_parsing.custom_parser parser_for_string])
+[@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 209, characters 48-65:
+Error: This expression has type
+         (string, [ `Value_parser ]) Derived_parser.t =
+           parse_from:Parse_from.t ->
+           namespace:string list ->
+           (string, [ `Value_parser ]) Parser_with_kind.t
+       but an expression was expected of type
+         parse_from:Parse_from.t ->
+         namespace:string list ->
+         (variant_argument_type, [< `Parser | `Value_parser ])
+         Parser_with_kind.t
+       Hint: Did you pass in a custom parser of the correct type?
+       Type string is not compatible with type variant_argument_type
+|}]
+
+type t = { foo : (int[@uri_parsing.bool]) } [@@deriving typed_fields, uri_parsing]
+
+[%%expect
+  {|
+Line 229, characters 11-41:
+Error: This expression has type bool Uri_parsing.Parser.t
+       but an expression was expected of type
+         field_argument_type Uri_parsing.Parser.t
+       Type bool is not compatible with type field_argument_type
+|}]
+
+(* This says [int] in my experience instead of [a]. *)
+type t = (int[@uri_parsing.custom_parser parser_for_string]) * int
+[@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 241, characters 41-58:
+Error: This expression has type
+         (string, [ `Value_parser ]) Derived_parser.t =
+           parse_from:Parse_from.t ->
+           namespace:string list ->
+           (string, [ `Value_parser ]) Parser_with_kind.t
+       but an expression was expected of type
+         parse_from:Parse_from.t ->
+         namespace:string list ->
+         (a, [< `Parser | `Value_parser ]) Parser_with_kind.t
+       Hint: Did you pass in a custom parser of the correct type?
+       Type string is not compatible with type a
+|}]
+
+type t = Foo of int [@uri_parsing.fragment] [@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 260, characters 16-19:
+Error: ppx_uri_parsing: [@uri_parsing.fragment] may only be used on option types
+|}]
+
+module _ = struct
+  type 'a option = 'a [@@deriving uri_parsing]
+
+  type t = Foo of int option [@uri_parsing.fragment]
+  [@@deriving typed_variants, uri_parsing]
+end
+
+[%%expect
+  {|
+Line 271, characters 2-95:
+Error: This expression has type 'a option/2
+       but an expression was expected of type result
+       File "uri_parsing_errors.mlt", line 269, characters 2-46:
+         Definition of type option/1
+       File "_none_", line 1:
+         Definition of type option/2
+|}]
+
+type t = The_brown_fox of { jumps_over : string }
+[@@deriving typed_variants, uri_parsing ~capitalize:"invalid"]
+
+[%%expect
+  {|
+Line 287, characters 52-61:
+Error: ("Capitalization.of_string: invalid capitalization string" (s invalid)
+  (can_be
+    (PascalCase camelCase snake_case Capitalized_snake_case Pascal_Snake_Case
+      SCREAMING_SNAKE_CASE aLtErNaTiNg_sNaKe_cAsE kebab-case
+      Capitalized-kebab-case Pascal-Kebab-Case SCREAMING-KEBAB-CASE
+      aLtErNaTiNg-kEbAb-cAsE "Sentence case" "Title Case"
+      "lower sentence case" "UPPER SENTENCE CASE"
+      "aLtErNaTiNg sEnTeNcE CaSe")))
+|}]
+
+(* Type parameters *)
+
+type 'a t = Foo of 'a [@@deriving typed_variants, uri_parsing]
+
+[%%expect {| |}]
+
+type ('a, 'b, 'c, 'd, 'e) t = Foo of 'a [@@deriving typed_variants, uri_parsing]
+
+[%%expect {| |}]
+
+(* If people really want to write types like this for their URIs, we can consider making
+   this work. *)
+type ('a, 'b, 'c, 'd, 'e, 'f) t = Foo of 'a [@@deriving typed_variants, uri_parsing]
+
+[%%expect
+  {|
+Line 314, characters 0-84:
+Error: Unbound module Typed_variants_lib.S_of_S6
+Hint: Did you mean S_of_S1, S_of_S2, S_of_S3, S_of_S4 or S_of_S5?
+|}]
+
+(* We can consider automatically generating these cases at this point... *)
+type t = int * int * int * int * int * int * int * int [@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 324, characters 9-54:
+Error: Unbound value parser_for_tuple8
+Hint: Did you mean parser_for_tuple2, parser_for_tuple3, parser_for_tuple4,
+parser_for_tuple5, parser_for_tuple6 or parser_for_tuple7?
+|}]
+
+(* Value parser type errors *)
+
+module Value_parser_input = struct
+  type 'a t = Foo of 'a * 'a option [@@deriving typed_variants, uri_parsing]
+end
+
+module Parser = struct
+  type t = Foo of int [@@deriving typed_variants, uri_parsing]
+end
+
+type t = int Value_parser_input.t [@@deriving uri_parsing]
+
+[%%expect {| |}]
+
+type t = Parser.t Value_parser_input.t [@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 348, characters 9-17:
+Error: This expression has type
+         (Parser.t, [ `Parser ]) Derived_parser.t =
+           parse_from:Parse_from.t ->
+           namespace:string list ->
+           (Parser.t, [ `Parser ]) Parser_with_kind.t
+       but an expression was expected of type
+         parse_from:Parse_from.t ->
+         namespace:string list ->
+         (Parser.t, [ `Value_parser ]) Parser_with_kind.t
+       Hint: Some parsers (e.g. for options and lists) are only compatible with value parsers (e.g. for ints, bools, or sexpable values). Think about the URI you want in the end, and try constructing your type to match that.
+       These two variant types have no intersection
+|}]
+
+type t = Parser.t option [@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 366, characters 9-17:
+Error: This expression has type
+         (Parser.t, [ `Parser ]) Derived_parser.t =
+           parse_from:Parse_from.t ->
+           namespace:string list ->
+           (Parser.t, [ `Parser ]) Parser_with_kind.t
+       but an expression was expected of type
+         parse_from:Parse_from.t ->
+         namespace:string list ->
+         (Parser.t, [ `Value_parser ]) Parser_with_kind.t
+       Hint: Some parsers (e.g. for options and lists) are only compatible with value parsers (e.g. for ints, bools, or sexpable values). Think about the URI you want in the end, and try constructing your type to match that.
+       These two variant types have no intersection
+|}]
+
+(* This error is hard to read, but there's not much we can do about it... *)
+module _ : sig
+  type 'a t = Foo of 'a * 'a option [@@deriving uri_parsing]
+end =
+  Value_parser_input
+
+[%%expect
+  {|
+Line 388, characters 2-20:
+Error: Signature mismatch:
+       ...
+       ...
+       In module For_ppx_uri_parsing:
+       Values do not match:
+         val parser :
+           ('a, [ `Value_parser ]) Derived_parser.t ->
+           ('a t, [ `Parser ]) Derived_parser.t
+       is not included in
+         val parser :
+           ('a, [< `Parser | `Value_parser ]) Derived_parser.t ->
+           ('a t, [ `Parser ]) Derived_parser.t
+       The type
+         ('a, [ `Value_parser ]) Derived_parser.t ->
+         ('a t, [ `Parser ]) Derived_parser.t
+       is not compatible with the type
+         ('a, [< `Parser | `Value_parser ]) Derived_parser.t ->
+         ('a t, [ `Parser ]) Derived_parser.t
+       Type
+         ('a, [ `Value_parser ]) Derived_parser.t =
+           parse_from:Parse_from.t ->
+           namespace:string list ->
+           ('a, [ `Value_parser ]) Parser_with_kind.t
+       is not compatible with type
+         ('a, [< `Parser | `Value_parser ] as 'b) Derived_parser.t =
+           parse_from:Parse_from.t ->
+           namespace:string list -> ('a, 'b) Parser_with_kind.t
+       The tag `Value_parser is guaranteed to be present in the first variant type,
+       but not in the second
+       File "uri_parsing_errors.mlt", line 386, characters 2-60:
+         Expected declaration
+       File "uri_parsing_errors.mlt", line 337, characters 2-76:
+         Actual declaration
+|}]
+
+(* ...and people can always get around it by writing out the module explicitly. *)
+module Foo : sig
+  type 'a t = Foo of 'a * 'a option
+
+  module For_ppx_uri_parsing : sig
+    val parser
+      :  ('a, [ `Value_parser ]) For_ppx_uri_parsing.Derived_parser.t
+      -> ('a t, [ `Parser ]) For_ppx_uri_parsing.Derived_parser.t
+  end
+end =
+  Value_parser_input
+
+let _ = Foo.For_ppx_uri_parsing.parser
+
+[%%expect {| |}]
+
+(* NOTE: Users must use [int] over [Int.t]. *)
+
+type t = Int.t [@@deriving uri_parsing]
+
+[%%expect
+  {|
+Line 448, characters 9-14:
+Error: Unbound module Int.For_ppx_uri_parsing
+|}]
