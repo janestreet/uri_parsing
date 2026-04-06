@@ -6,18 +6,22 @@ bug-reports: "https://github.com/janestreet/uri_parsing/issues"
 dev-repo: "git+https://github.com/janestreet/uri_parsing.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/uri_parsing/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
   "ocaml" {>= "5.1.0"}
+  "capitalization"
   "core"
   "ppx_jane"
   "ppx_typed_fields"
+  "ppxlib_jane"
   "textutils"
   "base64"           {>= "3.4.0"}
   "dune"             {>= "3.17.0"}
   "js_of_ocaml-ppx"  {= "6.0.1+ox"}
+  "ppxlib"           {= "0.33.0+ox"}
   "re"               {= "1.14.0+ox"}
   "uri"              {>= "3.0.0"}
 ]
