@@ -17,7 +17,7 @@ module Signature = struct
 
   let wrap_with_param_inputs ~loc params output_type =
     List.fold_right params ~init:output_type ~f:(fun (param, _) output_type ->
-      [%type: ([%t param], _) For_ppx_uri_parsing.Derived_parser.t -> [%t output_type]])
+      [%type: ([%t param], _) Ppx_uri_parsing_lib.Derived_parser.t -> [%t output_type]])
   ;;
 
   let signature ~loc ~path:_ (_rec_flag, type_decls) =
@@ -43,10 +43,10 @@ module Signature = struct
               ~type_:[%type: [%t type_param] Uri_parsing.Parser.t]
           ]
       in
-      (* module For_ppx_uri_parsing *)
-      let for_ppx_uri_parsing =
+      (* module Ppx_uri_parsing_lib *)
+      let ppx_uri_parsing_lib =
         [%sigi:
-          module For_ppx_uri_parsing : sig
+          module Ppx_uri_parsing_lib : sig
             [%%i
               val_declaration
                 ~loc
@@ -54,11 +54,11 @@ module Signature = struct
                 ~suffix
                 ~type_:
                   ([%type:
-                     ([%t type_param], [ `Parser ]) For_ppx_uri_parsing.Derived_parser.t]
+                     ([%t type_param], [ `Parser ]) Ppx_uri_parsing_lib.Derived_parser.t]
                    |> wrap_with_param_inputs ~loc type_decl.ptype_params)]
           end]
       in
-      parser @ [ for_ppx_uri_parsing ]
+      parser @ [ ppx_uri_parsing_lib ]
     | [] ->
       (* I'm not sure if is syntactically possible, but just in case: *)
       Location.raise_errorf ~loc "ppx_uri_parsing does not support empty types"
@@ -439,7 +439,7 @@ module Structure = struct
             | Lident name -> Lident [%string "parser%{for_suffix name}"]
             | Ldot (module_, name) ->
               Ldot
-                ( Ldot (module_, "For_ppx_uri_parsing")
+                ( Ldot (module_, "Ppx_uri_parsing_lib")
                 , [%string "parser%{for_suffix name}"] )
             | Lapply _ -> assert false
           in
@@ -475,6 +475,7 @@ module Structure = struct
       | `Default, Ptyp_any _
       | `Default, Ptyp_poly _
       | `Default, Ptyp_repr _
+      | `Default, Ptyp_newlayout _
       | `Default, Ptyp_of_kind _
       | `Default, Ptyp_extension _
       | `Default, Ptyp_splice _ ->
@@ -663,7 +664,7 @@ module Structure = struct
           ~loc
           (with_loc
              (Ldot
-                ( Ldot (Lident "Typed_variant_anonymous_records", "For_ppx_uri_parsing")
+                ( Ldot (Lident "Typed_variant_anonymous_records", "Ppx_uri_parsing_lib")
                 , [%string "parser%{for_suffix}"] ))
              ~loc)
       in
@@ -785,15 +786,15 @@ module Structure = struct
     let parser_value =
       pexp_ident
         (with_loc
-           (Ldot (Lident "For_ppx_uri_parsing", [%string "parser%{for_suffix}"]))
+           (Ldot (Lident "Ppx_uri_parsing_lib", [%string "parser%{for_suffix}"]))
            ~loc)
     in
     [%stri
       let [%p parser_pattern] =
-        For_ppx_uri_parsing.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.Derived_parser.to_parser
           [%e parser_value]
           ~parse_from:
-            (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+            (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
           ~namespace:[]
       ;;]
   ;;
@@ -808,7 +809,7 @@ module Structure = struct
       let type_param_names = type_param_names type_decl.ptype_params in
       let for_suffix = suffix "for" type_name in
       let of_suffix = suffix "of" type_name in
-      (* body of For_ppx_uri_parsing.parser *)
+      (* body of Ppx_uri_parsing_lib.parser *)
       let parser_body =
         match
           ( Ppxlib_jane.Shim.Type_kind.of_parsetree type_decl.ptype_kind
@@ -893,11 +894,11 @@ module Structure = struct
             ~loc
             "ppx_uri_parsing only supports variant and record types"
       in
-      (* module For_ppx_uri_parsing = ... *)
-      let for_ppx_uri_parsing =
+      (* module Ppx_uri_parsing_lib = ... *)
+      let ppx_uri_parsing_lib =
         [%stri
-          module For_ppx_uri_parsing = struct
-            include For_ppx_uri_parsing
+          module Ppx_uri_parsing_lib = struct
+            include Ppx_uri_parsing_lib
 
             [%%i derived_parser ~loc ~for_suffix ~type_param_names ~parser_body]
           end]
@@ -906,7 +907,7 @@ module Structure = struct
       let parser =
         if List.is_empty type_decl.ptype_params then [ parser ~loc ~for_suffix ] else []
       in
-      for_ppx_uri_parsing :: parser
+      ppx_uri_parsing_lib :: parser
     | [] -> Location.raise_errorf ~loc "ppx_uri_parsing does not support empty types"
     | _ :: _ :: _ ->
       Location.raise_errorf

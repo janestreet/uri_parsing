@@ -2,7 +2,7 @@
  (name ppx_uri_parsing)
  (public_name uri_parsing.ppx_uri_parsing)
  (libraries ppx_uri_parsing_expander ppxlib)
- (kind ppx_deriver)
- (ppx_runtime_libraries uri_parsing.ppx_uri_parsing.runtime)
+ (kind ppx_rewriter)
+ (ppx_runtime_libraries uri_parsing.ppx_uri_parsing_lib)
  (preprocess
   (pps ppx_jane)))

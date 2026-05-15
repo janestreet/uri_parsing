@@ -1,6 +1,6 @@
 open! Core
 open Common
-open For_ppx_uri_parsing
+open Ppx_uri_parsing_lib
 
 (* $MDX part-begin=custom *)
 let parser_for_id ~parse_from ~namespace:_ =

@@ -14,8 +14,8 @@ module%test [@name "parser_for_tuple2"] _ = struct
 
     let _ = fun (_ : ('a, 'b) tuple2) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser_for_tuple2
         (type _'a _'b)
@@ -90,8 +90,8 @@ module%test [@name "parser_for_tuple3"] _ = struct
 
     let _ = fun (_ : ('a, 'b, 'c) tuple3) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser_for_tuple3
         (type _'a _'b _'c)
@@ -174,8 +174,8 @@ module%test [@name "parser_for_tuple4"] _ = struct
 
     let _ = fun (_ : ('a, 'b, 'c, 'd) tuple4) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser_for_tuple4
         (type _'a _'b _'c _'d)
@@ -266,8 +266,8 @@ module%test [@name "parser_for_tuple5"] _ = struct
 
     let _ = fun (_ : ('a, 'b, 'c, 'd, 'e) tuple5) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser_for_tuple5
         (type _'a _'b _'c _'d _'e)

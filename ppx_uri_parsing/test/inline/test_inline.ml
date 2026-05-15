@@ -12,8 +12,8 @@ module Simple_record = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -56,10 +56,10 @@ module Simple_record = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -81,8 +81,8 @@ module Record_with_type_parameters = struct
 
     let _ = fun (_ : ('a, 'b) t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser
         (type _'a _'b)
@@ -153,8 +153,8 @@ module%test [@name "Simple variant"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -198,10 +198,10 @@ module%test [@name "Simple variant"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -222,8 +222,8 @@ module%test [@name "Variant with type parameters"] _ = struct
 
     let _ = fun (_ : ('a, 'b) t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser
         (type _'a _'b)
@@ -294,8 +294,8 @@ module%test [@name "Abstract w/ manifest"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace -> parser_for_int ~parse_from ~namespace
@@ -305,10 +305,10 @@ module%test [@name "Abstract w/ manifest"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -332,8 +332,8 @@ module%test [@name "Inline record"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -368,14 +368,14 @@ module%test [@name "Inline record"] _ = struct
               Uri_parsing.Parser.with_prefix
                 [ "t" ]
                 (Derived_parser.to_parser
-                   Typed_variant_anonymous_records.For_ppx_uri_parsing.parser
+                   Typed_variant_anonymous_records.Ppx_uri_parsing_lib.parser
                    ~parse_from
                    ~namespace:[])
             | B ->
               Uri_parsing.Parser.with_prefix
                 [ "b" ]
                 (Derived_parser.to_parser
-                   Typed_variant_anonymous_records.For_ppx_uri_parsing.parser_for_b
+                   Typed_variant_anonymous_records.Ppx_uri_parsing_lib.parser_for_b
                    ~parse_from
                    ~namespace:[])
           ;;
@@ -393,10 +393,10 @@ module%test [@name "Inline record"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -418,8 +418,8 @@ module%test [@name "Sexpable"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -501,10 +501,10 @@ module%test [@name "Sexpable"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -525,8 +525,8 @@ module%test [@name "Stringable"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -595,10 +595,10 @@ module%test [@name "Stringable"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -620,8 +620,8 @@ module%test [@name "Binable"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -704,10 +704,10 @@ module%test [@name "Binable"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -729,8 +729,8 @@ module%test [@name "Query & path"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -778,10 +778,10 @@ module%test [@name "Query & path"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -803,8 +803,8 @@ module%test [@name "Routes"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -851,10 +851,10 @@ module%test [@name "Routes"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -877,8 +877,8 @@ module%test [@name "Defaults & flags"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -951,10 +951,10 @@ module%test [@name "Defaults & flags"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -975,8 +975,8 @@ module%test [@name "Keep namespace"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -1023,10 +1023,10 @@ module%test [@name "Keep namespace"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -1048,8 +1048,8 @@ module%test [@name "Skip namespace"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -1091,10 +1091,10 @@ module%test [@name "Skip namespace"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 
@@ -1106,7 +1106,7 @@ end
 
 module%test [@name "Custom parser"] _ = struct
   let tuple2_option_parser parser_1 parser_2 ~parse_from ~namespace =
-    let open For_ppx_uri_parsing in
+    let open Ppx_uri_parsing_lib in
     Parser_with_kind.Parser
       (Uri_parsing.Parser.optional_query_fields
          (Derived_parser.to_parser
@@ -1126,8 +1126,8 @@ module%test [@name "Custom parser"] _ = struct
 
     let _ = fun (_ : 'a t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser (type _'a) (parser_for_'a : (_'a, _) Derived_parser.t)
         : (_, _) Derived_parser.t
@@ -1197,8 +1197,8 @@ module%test [@name "Fragment"] _ = struct
 
     let _ = fun (_ : t) -> ()
 
-    module For_ppx_uri_parsing = struct
-      include For_ppx_uri_parsing
+    module Ppx_uri_parsing_lib = struct
+      include Ppx_uri_parsing_lib
 
       let parser : (_, _) Derived_parser.t =
         fun ~parse_from ~namespace ->
@@ -1268,10 +1268,10 @@ module%test [@name "Fragment"] _ = struct
     end
 
     let parser =
-      For_ppx_uri_parsing.Derived_parser.to_parser
-        For_ppx_uri_parsing.parser
+      Ppx_uri_parsing_lib.Derived_parser.to_parser
+        Ppx_uri_parsing_lib.parser
         ~parse_from:
-          (For_ppx_uri_parsing.Parse_from.Default For_ppx_uri_parsing.Tiebreaker.Path)
+          (Ppx_uri_parsing_lib.Parse_from.Default Ppx_uri_parsing_lib.Tiebreaker.Path)
         ~namespace:[]
     ;;
 

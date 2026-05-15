@@ -424,3 +424,129 @@ module%test Capitalization = struct
       |}]
   ;;
 end
+
+module%test Sexpable_functor = struct
+  module T = struct
+    type t =
+      | Foo
+      | Bar
+    [@@deriving sexp]
+  end
+
+  include T
+  include Ppx_uri_parsing_lib.Make_sexpable (T)
+
+  let%expect_test _ =
+    Uri_parsing.Parser.check_ok_and_print_urls_or_errors parser;
+    [%expect
+      {|
+      URL parser looks good!
+      ┌─────────────┐
+      │ All urls    │
+      ├─────────────┤
+      │ /<sexpable> │
+      └─────────────┘
+      |}]
+  ;;
+end
+
+module%test Stringable_functor = struct
+  module T = struct
+    type t =
+      | Foo
+      | Bar
+    [@@deriving string]
+  end
+
+  include T
+  include Ppx_uri_parsing_lib.Make_stringable (T)
+
+  let%expect_test _ =
+    Uri_parsing.Parser.check_ok_and_print_urls_or_errors parser;
+    [%expect
+      {|
+      URL parser looks good!
+      ┌───────────┐
+      │ All urls  │
+      ├───────────┤
+      │ /<string> │
+      └───────────┘
+      |}]
+  ;;
+end
+
+module%test Binable_functor = struct
+  module T = struct
+    type t =
+      | Foo
+      | Bar
+    [@@deriving bin_io]
+  end
+
+  include T
+  include Ppx_uri_parsing_lib.Make_binable (T)
+
+  let%expect_test _ =
+    Uri_parsing.Parser.check_ok_and_print_urls_or_errors parser;
+    [%expect
+      {|
+      URL parser looks good!
+      ┌────────────────────┐
+      │ All urls           │
+      ├────────────────────┤
+      │ /<base64<binable>> │
+      └────────────────────┘
+      |}]
+  ;;
+end
+
+module%test Value_parser_functor = struct
+  module T = struct
+    type t = int
+
+    let value_parser = Uri_parsing.Value_parser.name "foo" Uri_parsing.Value_parser.int
+  end
+
+  include T
+  include Ppx_uri_parsing_lib.Make_from_value_parser (T)
+
+  let%expect_test _ =
+    Uri_parsing.Parser.check_ok_and_print_urls_or_errors parser;
+    [%expect
+      {|
+      URL parser looks good!
+      ┌──────────┐
+      │ All urls │
+      ├──────────┤
+      │ /<foo>   │
+      └──────────┘
+      |}]
+  ;;
+end
+
+module Parser_functor = struct
+  module T = struct
+    type t = int
+
+    let parser =
+      Uri_parsing.Parser.from_path
+        (Uri_parsing.Value_parser.name "foo" Uri_parsing.Value_parser.int)
+    ;;
+  end
+
+  include T
+  include Ppx_uri_parsing_lib.Make_from_parser (T)
+
+  let%expect_test _ =
+    Uri_parsing.Parser.check_ok_and_print_urls_or_errors parser;
+    [%expect
+      {|
+      URL parser looks good!
+      ┌──────────┐
+      │ All urls │
+      ├──────────┤
+      │ /<foo>   │
+      └──────────┘
+      |}]
+  ;;
+end

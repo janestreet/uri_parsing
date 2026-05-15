@@ -1,6 +1,6 @@
 # ppx_uri_parsing
 
-Generates a `parser : t Uri_parsing.Parser.t`, alongside a `For_ppx_uri_parsing` module
+Generates a `parser : t Uri_parsing.Parser.t`, alongside a `Ppx_uri_parsing_lib` module
 that can be used to generate parsers for types that use `t`. This ppx aims to to supply
 good defaults for people who don't care too much about all the details of their URIs.
 If you want more power over your URIs, you should use the `Uri_parsing` library directly.
@@ -14,7 +14,7 @@ The basic ideas from URI parsing still hold: variants represent a choice of rout
 records represent a set of data. By default, the parser will try to read variant arguments
 from the path and record arguments from the query.
 
-Note that `typed_variants` or `typed_fields`, respectfully, must be derived on the type
+Note that `typed_variants` or `typed_fields`, respectively, must be derived on the type
 before `uri_parsing`.
 
 <!-- $MDX file=doc/main_for_mdx.ml,part=simple-variant -->
@@ -123,7 +123,7 @@ the sexp behavior.
 
 ### Sexpable, stringable, and binable values
 
-By default, the ppx will try to use `Foo.For_ppx_uri_parsing.parser` to parse the type
+By default, the ppx will try to use `Foo.Ppx_uri_parsing_lib.parser` to parse the type
 `Foo.t`. `[@uri_parsing.sexpable]`, `[@uri_parsing.stringable]`, and
 `[@uri_parsing.binable]` provide an "out" for values that don't have a parser.
 
@@ -145,6 +145,18 @@ let%expect_test _ =
     └─────────────┘
     |}]
 ;;
+```
+
+You can also generate these directly using the
+`Ppx_uri_parsing_lib.Make_sexpable`, `Make_stringable`, and `Make_binable` functors:
+
+<!-- $MDX skip -->
+```ocaml
+module My_id = struct
+  type t = Id.t [@@deriving sexp]
+
+  include functor Ppx_uri_parsing_lib.Make_sexpable
+end
 ```
 
 ### Path vs. query vs. fragment
@@ -333,11 +345,25 @@ let%expect_test _ =
 
 ### Custom parsers
 
-If these features cannot achieve the parser you desire but you still want to use this
-ppx, you can insert parsers of your choice using `[@uri_parsing.custom_parser expr]`.
+If these features cannot achieve the parser you desire, you can create a parser by hand.
+
+If you want to define a custom parser for a whole type, consider using the
+`Ppx_uri_parsing_lib.Make_from_value_parser` or `Make_from_parser` functor:
+<!-- $MDX skip -->
+```ocaml
+module Id = struct
+  type t = int [@@deriving sexp]
+
+  let value_parser = Uri_parsing.Value_parser.name "id" Uri_parsing.Value_parser.int
+
+  include functor Ppx_uri_parsing_lib.Make_from_value_parser
+end
+```
+
+Alternatively, you could use the `[@uri_parsing.custom_parser expr]` attribute.
 This expression must have the same type that the ppx uses internally to represent parsers
-(`(t, _) For_ppx_uri_parsing.Derived_parser.t`). You can use existing parsers in the
-`For_ppx_uri_parsing` library to construct your parser, or you can construct it from scratch:
+(`(t, _) Ppx_uri_parsing_lib.Derived_parser.t`). You can use existing parsers in the
+`Ppx_uri_parsing_lib` library to construct your parser, or you can construct it from scratch:
 
 <!-- $MDX file=doc/custom_for_mdx.ml,part=custom -->
 ```ocaml
@@ -379,8 +405,8 @@ type t [@@deriving uri_parsing]
 (* Generates... *)
 val parser : t Uri_parsing.Parser.t
 
-module For_ppx_uri_parsing : sig
-  val parser : (t, [ `Parser ]) For_ppx_uri_parsing.Derived_parser.t
+module Ppx_uri_parsing_lib : sig
+  val parser : (t, [ `Parser ]) Ppx_uri_parsing_lib.Derived_parser.t
 end
 ```
 
@@ -388,17 +414,17 @@ The first `parser` is intended for people to use directly; the second is for the
 use in deriving further parsers.
 
 However, types with type parameters can't be used directly, since they're missing parsers
-corresponding to those parameters. In this case, only the `For_ppx_uri_parsing` module is
+corresponding to those parameters. In this case, only the `Ppx_uri_parsing_lib` module is
 generated, and its parser takes in an extra parser argument for each type parameter.
 
 ```ocaml skip
 type 'a t [@@deriving uri_parsing]
 
 (* Generates... *)
-module For_ppx_uri_parsing : sig
+module Ppx_uri_parsing_lib : sig
   val parser
-   : ('a, _) For_ppx_uri_parsing.Derived_parser.t
-  -> ('a t, [ `Parser ]) For_ppx_uri_parsing.Derived_parser.t
+   : ('a, _) Ppx_uri_parsing_lib.Derived_parser.t
+  -> ('a t, [ `Parser ]) Ppx_uri_parsing_lib.Derived_parser.t
 end
 ```
 
@@ -411,8 +437,8 @@ arguments need to be value parsers.
 
 ```ocaml skip
 val parser_for_option
- : ('a, [ `Value_parser ]) For_ppx_uri_parsing.Derived_parser.t
--> ('a t, [ `Parser ]) For_ppx_uri_parsing.Derived_parser.t
+ : ('a, [ `Value_parser ]) Ppx_uri_parsing_lib.Derived_parser.t
+-> ('a t, [ `Parser ]) Ppx_uri_parsing_lib.Derived_parser.t
 ```
 
 If someone passes a regular parser as an argument (or has something like

@@ -90,3 +90,7 @@ end
 module Use_type_parameters : sig
   type bar = (int, string) Type_parameters.foo [@@deriving uri_parsing]
 end
+
+module Parser_functor : sig
+  type t [@@deriving uri_parsing]
+end
