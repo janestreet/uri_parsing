@@ -1,5 +1,7 @@
 #print_line_numbers true
 
+#reset_line_numbers_after_expect true
+
 open! Core
 
 (* Typed_fields *)
@@ -8,7 +10,7 @@ type t = { foo : int } [@@deriving uri_parsing]
 
 [%%expect
   {|
-Line 7, characters 0-47:
+Line 5, characters 0-47:
 Error: Unbound module Typed_field
 |}]
 
@@ -16,7 +18,7 @@ type a = { foo : int } [@@deriving uri_parsing]
 
 [%%expect
   {|
-Line 15, characters 0-47:
+Line 1, characters 0-47:
 Error: Unbound module Typed_field_of_a
 |}]
 
@@ -24,7 +26,7 @@ type t = Foo of int [@@deriving uri_parsing]
 
 [%%expect
   {|
-Line 23, characters 0-44:
+Line 1, characters 0-44:
 Error: Unbound module Typed_variant
 |}]
 
@@ -32,7 +34,7 @@ type a = Foo of int [@@deriving uri_parsing]
 
 [%%expect
   {|
-Line 31, characters 0-44:
+Line 1, characters 0-44:
 Error: Unbound module Typed_variant_of_a
 |}]
 
@@ -45,7 +47,7 @@ type t =
 
 [%%expect
   {|
-Line 43, characters 12-13:
+Line 3, characters 12-13:
 Error: ppx_uri_parsing: Uri_parsing does not support recursive types
 |}]
 
@@ -56,7 +58,7 @@ type t =
 
 [%%expect
   {|
-Line 54, characters 20-21:
+Line 3, characters 20-21:
 Error: ppx_uri_parsing: Uri_parsing does not support recursive types
 |}]
 
@@ -64,7 +66,7 @@ type t = { foo : t } [@@deriving typed_fields, uri_parsing]
 
 [%%expect
   {|
-Line 63, characters 17-18:
+Line 1, characters 17-18:
 Error: ppx_uri_parsing: Uri_parsing does not support recursive types
 |}]
 
@@ -74,7 +76,7 @@ type nonrec t = { foo : t } [@@deriving typed_fields, uri_parsing]
 
 [%%expect
   {|
-Line 73, characters 0-66:
+Line 2, characters 0-66:
 Error: nonrec is not compatible with the `typed_fields' preprocessor
 |}]
 
@@ -107,7 +109,7 @@ type 'a t =
 
 [%%expect
   {|
-Line 103, characters 0-91:
+Line 1, characters 0-91:
 Error: This variant or record definition does not match that of type
          Typed_variant.Typed_variant_anonymous_records.foo
        Fields do not match:
@@ -128,7 +130,7 @@ type t = { foo : int [@uri_parsing.path] [@uri_parsing.query] }
 
 [%%expect
   {|
-Line 126, characters 11-61:
+Line 1, characters 11-61:
 Error: ppx_uri_parsing: [@uri_parsing.query] and [@uri_parsing.path] are not compatible
 |}]
 
@@ -136,7 +138,7 @@ type t = { foo : int [@uri_parsing.index] } [@@deriving typed_fields, uri_parsin
 
 [%%expect
   {|
-Line 135, characters 23-40:
+Line 1, characters 23-40:
 Error: Attribute `uri_parsing.index' was not used.
        Hint: `uri_parsing.index' is available for constructor declarations
        but is
@@ -153,7 +155,7 @@ type t = { foo : (int[@uri_parsing.stringable] [@uri_parsing.sexpable]) }
 
 [%%expect
   {|
-Line 151, characters 18-21:
+Line 1, characters 18-21:
 Error: ppx_uri_parsing: only one of [@uri_parsing.{sexpable,stringable,binable,bool,custom_parser}] can be specified for a given type
 |}]
 
@@ -162,7 +164,7 @@ type t = Foo of int [@uri_parsing.index] [@uri_parsing.route "bar"]
 
 [%%expect
   {|
-Line 160, characters 9-67:
+Line 1, characters 9-67:
 Error: ppx_uri_parsing: [@uri_parsing.index] and [@uri_parsing.route] are not compatible
 |}]
 
@@ -171,8 +173,8 @@ type t = Foo of (int option[@uri_parsing.stringable])
 
 [%%expect
   {|
-Line 169, characters 17-27:
-Error: ppx_string_conv: aliases to types with parameters not supported
+Line 1, characters 17-27:
+Error: Unbound value string_of_option
 |}]
 
 type 'a t = Foo of ('a option[@uri_parsing.sexpable])
@@ -180,7 +182,7 @@ type 'a t = Foo of ('a option[@uri_parsing.sexpable])
 
 [%%expect
   {|
-Line 178, characters 20-22:
+Line 1, characters 20-22:
 Error: ppx_sexp_conv: unbound type variable 'a
 |}]
 
@@ -191,7 +193,7 @@ type t = { foo : (int[@uri_parsing.custom_parser parser_for_string]) }
 
 [%%expect
   {|
-Line 189, characters 49-66:
+Line 1, characters 49-66:
 Error: This expression has type
          (string, [ `Value_parser ]) Derived_parser.t =
            parse_from:Parse_from.t ->
@@ -211,7 +213,7 @@ type t = Foo of (int[@uri_parsing.custom_parser parser_for_string])
 
 [%%expect
   {|
-Line 209, characters 48-65:
+Line 1, characters 48-65:
 Error: This expression has type
          (string, [ `Value_parser ]) Derived_parser.t =
            parse_from:Parse_from.t ->
@@ -230,7 +232,7 @@ type t = { foo : (int[@uri_parsing.bool]) } [@@deriving typed_fields, uri_parsin
 
 [%%expect
   {|
-Line 229, characters 11-41:
+Line 1, characters 11-41:
 Error: This expression has type bool Uri_parsing.Parser.t
        but an expression was expected of type
          field_argument_type Uri_parsing.Parser.t
@@ -243,7 +245,7 @@ type t = (int[@uri_parsing.custom_parser parser_for_string]) * int
 
 [%%expect
   {|
-Line 241, characters 41-58:
+Line 1, characters 41-58:
 Error: This expression has type
          (string, [ `Value_parser ]) Derived_parser.t =
            parse_from:Parse_from.t ->
@@ -261,7 +263,7 @@ type t = Foo of int [@uri_parsing.fragment] [@@deriving typed_variants, uri_pars
 
 [%%expect
   {|
-Line 260, characters 16-19:
+Line 1, characters 16-19:
 Error: ppx_uri_parsing: [@uri_parsing.fragment] may only be used on option types
 |}]
 
@@ -274,10 +276,10 @@ end
 
 [%%expect
   {|
-Line 271, characters 2-95:
+Line 4, characters 2-95:
 Error: This expression has type 'a option/2
        but an expression was expected of type result
-       File "uri_parsing_errors.mlt", line 269, characters 2-46:
+       File "uri_parsing_errors.mlt", line 2, characters 2-46:
          Definition of type option/1
        File "_none_", line 1:
          Definition of type option/2
@@ -288,7 +290,7 @@ type t = The_brown_fox of { jumps_over : string }
 
 [%%expect
   {|
-Line 287, characters 52-61:
+Line 2, characters 52-61:
 Error: ("Capitalization.of_string: invalid capitalization string" (s invalid)
   (can_be
     (PascalCase camelCase snake_case Capitalized_snake_case Pascal_Snake_Case
@@ -315,7 +317,7 @@ type ('a, 'b, 'c, 'd, 'e, 'f) t = Foo of 'a [@@deriving typed_variants, uri_pars
 
 [%%expect
   {|
-Line 314, characters 0-84:
+Line 1, characters 0-84:
 Error: Unbound module Typed_variants_lib.S_of_S6
 Hint: Did you mean S_of_S1, S_of_S2, S_of_S3, S_of_S4 or S_of_S5?
 |}]
@@ -325,7 +327,7 @@ type t = int * int * int * int * int * int * int * int [@@deriving uri_parsing]
 
 [%%expect
   {|
-Line 324, characters 9-54:
+Line 1, characters 9-54:
 Error: Unbound value parser_for_tuple8
 Hint: Did you mean parser_for_tuple2, parser_for_tuple3, parser_for_tuple4,
 parser_for_tuple5, parser_for_tuple6 or parser_for_tuple7?
@@ -349,7 +351,7 @@ type t = Parser.t Value_parser_input.t [@@deriving uri_parsing]
 
 [%%expect
   {|
-Line 348, characters 9-17:
+Line 1, characters 9-17:
 Error: This expression has type
          (Parser.t, [ `Parser ]) Derived_parser.t =
            parse_from:Parse_from.t ->
@@ -367,7 +369,7 @@ type t = Parser.t option [@@deriving uri_parsing]
 
 [%%expect
   {|
-Line 366, characters 9-17:
+Line 1, characters 9-17:
 Error: This expression has type
          (Parser.t, [ `Parser ]) Derived_parser.t =
            parse_from:Parse_from.t ->
@@ -389,11 +391,11 @@ end =
 
 [%%expect
   {|
-Line 388, characters 2-20:
+Line 4, characters 2-20:
 Error: Signature mismatch:
        ...
        ...
-       In module For_ppx_uri_parsing:
+       In module Ppx_uri_parsing_lib:
        Values do not match:
          val parser :
            ('a, [ `Value_parser ]) Derived_parser.t ->
@@ -419,9 +421,9 @@ Error: Signature mismatch:
            namespace:string list -> ('a, 'b) Parser_with_kind.t
        The tag `Value_parser is guaranteed to be present in the first variant type,
        but not in the second
-       File "uri_parsing_errors.mlt", line 386, characters 2-60:
+       File "uri_parsing_errors.mlt", line 2, characters 2-60:
          Expected declaration
-       File "uri_parsing_errors.mlt", line 337, characters 2-76:
+       File "uri_parsing_errors.mlt", line 2, characters 2-76:
          Actual declaration
 |}]
 
@@ -429,15 +431,15 @@ Error: Signature mismatch:
 module Foo : sig
   type 'a t = Foo of 'a * 'a option
 
-  module For_ppx_uri_parsing : sig
+  module Ppx_uri_parsing_lib : sig
     val parser
-      :  ('a, [ `Value_parser ]) For_ppx_uri_parsing.Derived_parser.t
-      -> ('a t, [ `Parser ]) For_ppx_uri_parsing.Derived_parser.t
+      :  ('a, [ `Value_parser ]) Ppx_uri_parsing_lib.Derived_parser.t
+      -> ('a t, [ `Parser ]) Ppx_uri_parsing_lib.Derived_parser.t
   end
 end =
   Value_parser_input
 
-let _ = Foo.For_ppx_uri_parsing.parser
+let _ = Foo.Ppx_uri_parsing_lib.parser
 
 [%%expect {| |}]
 
@@ -447,6 +449,6 @@ type t = Int.t [@@deriving uri_parsing]
 
 [%%expect
   {|
-Line 448, characters 9-14:
-Error: Unbound module Int.For_ppx_uri_parsing
+Line 1, characters 9-14:
+Error: Unbound module Int.Ppx_uri_parsing_lib
 |}]

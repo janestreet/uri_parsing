@@ -25,7 +25,7 @@ depends: [
   "re"               {= "1.14.0+ox"}
   "uri"              {>= "3.0.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
 synopsis: "A library for building composable URI parsers using ppx_typed_fields."
 description: "
 A library for building composable URI parsers using ppx_typed_fields.

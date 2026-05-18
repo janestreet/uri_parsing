@@ -1,6 +1,6 @@
 (library
- (name for_ppx_uri_parsing)
- (public_name uri_parsing.ppx_uri_parsing.runtime)
+ (name ppx_uri_parsing_lib)
+ (public_name uri_parsing.ppx_uri_parsing_lib)
  (libraries core uri_parsing)
  (preprocess
-  (pps ppx_typed_fields)))
+  (pps ppx_jane)))

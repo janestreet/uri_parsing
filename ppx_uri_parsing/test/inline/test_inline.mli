@@ -12,8 +12,8 @@ module Simple_record : sig
 
     val parser : t Uri_parsing.Parser.t
 
-    module For_ppx_uri_parsing : sig
-      val parser : (t, [ `Parser ]) For_ppx_uri_parsing.Derived_parser.t
+    module Ppx_uri_parsing_lib : sig
+      val parser : (t, [ `Parser ]) Ppx_uri_parsing_lib.Derived_parser.t
     end
   end
   [@@ocaml.doc "@inline"]
@@ -31,11 +31,11 @@ module Record_with_type_parameters : sig
   include sig
     [@@@ocaml.warning "-32-60"]
 
-    module For_ppx_uri_parsing : sig
+    module Ppx_uri_parsing_lib : sig
       val parser
-        :  ('a, _) For_ppx_uri_parsing.Derived_parser.t
-        -> ('b, _) For_ppx_uri_parsing.Derived_parser.t
-        -> (('a, 'b) t, [ `Parser ]) For_ppx_uri_parsing.Derived_parser.t
+        :  ('a, _) Ppx_uri_parsing_lib.Derived_parser.t
+        -> ('b, _) Ppx_uri_parsing_lib.Derived_parser.t
+        -> (('a, 'b) t, [ `Parser ]) Ppx_uri_parsing_lib.Derived_parser.t
     end
   end
   [@@ocaml.doc "@inline"]

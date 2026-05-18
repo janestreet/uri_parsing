@@ -103,3 +103,67 @@ val parser_for_tuple7
   -> ('f, _) Derived_parser.t
   -> ('g, _) Derived_parser.t
   -> ('a * 'b * 'c * 'd * 'e * 'f * 'g, [ `Parser ]) Derived_parser.t
+
+(** This is the signature that ppx_uri_parsing usually outputs. *)
+module type S = sig
+  type t
+
+  val parser : t Uri_parsing.Parser.t
+
+  module Ppx_uri_parsing_lib : sig
+    val parser : (t, [ `Parser ]) Derived_parser.t
+  end
+end
+
+module type S_value_parser = sig
+  type t
+
+  val parser : t Uri_parsing.Parser.t
+
+  module Ppx_uri_parsing_lib : sig
+    val parser : (t, [ `Value_parser ]) Derived_parser.t
+  end
+end
+
+(** The following functors are for convenience. They are meant to be used e.g.:
+
+    {[
+      module Foo = struct
+        type t = ... [@@deriving sexp]
+
+        include functor Ppx_uri_parsing_lib.Make_sexpable
+      end
+
+      ...
+
+      type t = ... Foo.t ... [@@deriving uri_parsing]
+    ]} *)
+module Make_sexpable (M : sig
+    type t [@@deriving sexp]
+  end) : S_value_parser with type t := M.t
+
+module Make_stringable (M : sig
+    type t [@@deriving string]
+  end) : S_value_parser with type t := M.t
+
+module Make_binable (M : sig
+    type t [@@deriving bin_io]
+  end) : S_value_parser with type t := M.t
+
+module Make_from_value_parser (M : sig
+    type t
+
+    val value_parser : t Uri_parsing.Value_parser.t
+  end) : S_value_parser with type t := M.t
+
+module Make_from_parser (M : sig
+    type t
+
+    val parser : t Uri_parsing.Parser.t
+  end) : sig
+  (* We don't need to provide [parser] here as it's been provided by the user through [M]. *)
+
+  module Ppx_uri_parsing_lib : sig
+    val parser : (M.t, [ `Parser ]) Derived_parser.t
+  end
+end

@@ -391,3 +391,114 @@ let parser_for_tuple7
        ~unparse:(fun (first, second, third, fourth, fifth, sixth, seventh) ->
          { first; second; third; fourth; fifth; sixth; seventh }))
 ;;
+
+module type S = sig
+  type t
+
+  val parser : t Uri_parsing.Parser.t
+
+  module Ppx_uri_parsing_lib : sig
+    val parser : (t, [ `Parser ]) Derived_parser.t
+  end
+end
+
+module type S_value_parser = sig
+  type t
+
+  val parser : t Uri_parsing.Parser.t
+
+  module Ppx_uri_parsing_lib : sig
+    val parser : (t, [ `Value_parser ]) Derived_parser.t
+  end
+end
+
+module Make_sexpable (M : sig
+    type t [@@deriving sexp]
+  end) =
+struct
+  module Ppx_uri_parsing_lib = struct
+    let parser ~parse_from ~namespace:_ =
+      Parser_with_kind.Value_parser
+        (Uri_parsing.Value_parser.sexpable (module M), parse_from)
+    ;;
+  end
+
+  let parser =
+    Derived_parser.to_parser
+      Ppx_uri_parsing_lib.parser
+      (* These are the defaults for non-record/variant types (see
+         ppx/ppx_uri_parsing/test/inline/test_inline.ml:311), so they match what happens
+         when you just have e.g. type t = Foo.t [@uri_parsing.sexpable]. *)
+      ~parse_from:(Parse_from.Default Tiebreaker.Path)
+      ~namespace:[]
+  ;;
+end
+
+module Make_stringable (M : sig
+    type t [@@deriving string]
+  end) =
+struct
+  module Ppx_uri_parsing_lib = struct
+    let parser ~parse_from ~namespace:_ =
+      Parser_with_kind.Value_parser
+        (Uri_parsing.Value_parser.stringable (module M), parse_from)
+    ;;
+  end
+
+  let parser =
+    Derived_parser.to_parser
+      Ppx_uri_parsing_lib.parser
+      ~parse_from:(Parse_from.Default Tiebreaker.Path)
+      ~namespace:[]
+  ;;
+end
+
+module Make_binable (M : sig
+    type t [@@deriving bin_io]
+  end) =
+struct
+  module Ppx_uri_parsing_lib = struct
+    let parser ~parse_from ~namespace:_ =
+      Parser_with_kind.Value_parser
+        (Uri_parsing.Value_parser.binable_via_base64 (module M), parse_from)
+    ;;
+  end
+
+  let parser =
+    Derived_parser.to_parser
+      Ppx_uri_parsing_lib.parser
+      ~parse_from:(Parse_from.Default Tiebreaker.Path)
+      ~namespace:[]
+  ;;
+end
+
+module Make_from_value_parser (M : sig
+    type t
+
+    val value_parser : t Uri_parsing.Value_parser.t
+  end) =
+struct
+  module Ppx_uri_parsing_lib = struct
+    let parser ~parse_from ~namespace:_ =
+      Parser_with_kind.Value_parser (M.value_parser, parse_from)
+    ;;
+  end
+
+  let parser =
+    Derived_parser.to_parser
+      Ppx_uri_parsing_lib.parser
+      ~parse_from:(Parse_from.Default Tiebreaker.Path)
+      ~namespace:[]
+  ;;
+end
+
+module Make_from_parser (M : sig
+    type t
+
+    val parser : t Uri_parsing.Parser.t
+  end) =
+struct
+  module Ppx_uri_parsing_lib = struct
+    let parser ~parse_from:_ ~namespace:_ = Parser_with_kind.Parser M.parser
+  end
+end

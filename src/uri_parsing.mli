@@ -59,7 +59,7 @@ module Percent_encoding_behavior : sig
       also does its own percent encoding, additional testing should be done to ensure
       backwards compatibility.
 
-      The first implementation of bonsai_web_ui_url/uri_parsing originally mishandled pct
+      The first implementation of bonsai_web_url/uri_parsing originally mishandled pct
       encoding (e.g. sometimes " " got translated to %20, but when translated back, it
       sometimes translated back to "%20" instead of to " ")
 

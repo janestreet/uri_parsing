@@ -1,14 +1,12 @@
 open! Core
 
 module Id = struct
-  type t = int [@@deriving sexp]
+  module T = struct
+    type t = int [@@deriving sexp]
 
-  module For_ppx_uri_parsing = struct
-    open For_ppx_uri_parsing
-
-    let parser ~parse_from ~namespace:_ =
-      Parser_with_kind.Value_parser
-        (Uri_parsing.Value_parser.name "id" Uri_parsing.Value_parser.int, parse_from)
-    ;;
+    let value_parser = Uri_parsing.Value_parser.name "id" Uri_parsing.Value_parser.int
   end
+
+  include T
+  include Ppx_uri_parsing_lib.Make_from_value_parser (T)
 end
